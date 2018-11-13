@@ -5,6 +5,8 @@
 
 using namespace derecho;
 
+const int INIT_STATE = 100;
+
 /**
  * A simple class that maintains a single variable.
  */
@@ -115,6 +117,39 @@ std::vector<Replicated<State> &> get_subgroups(Group<State> *group) {
 }
 
 /**
+ * Tests membership by reading initial state, changing it, and reading again.
+ */
+void test_state(Replicated<State> &state) {
+  // Read initial state
+  rpc::QueryResults<int> results = stateHandle.ordered_query<RPC_NAME(read_value)>();
+  rpc::QueryResults<int>::ReplyMap& replies = results.get();
+  for (auto& reply_pair: replies) {
+    auto other_state = reply_pair.second.get();
+    if (other_state != INIT_STATE)
+      std::cout << "Failure from node " << reply_pair.first
+                << ": Expected " << INIT_STATE << " but got " << other_state << std::endl;
+    else
+      std::cout << "Reply from node " << reply_pair.first << ": " << other_state << std::endl;
+  }
+
+  // Change state
+  const int new_state = 42;
+  state.ordered_query<RPC_NAME(change_value)>(new_state);
+
+  // Read new state
+  results = stateHandle.ordered_query<RPC_NAME(read_value)>();
+  replies = results.get();
+  for (auto& reply_pair: replies) {
+    auto other_state = reply_pair.second.get();
+    if (other_state != new_state)
+      std::cout << "Failure from node " << reply_pair.first
+                << ": Expected " << new_state << " but got " << other_state << std::endl;
+    else
+      std::cout << "Reply from node " << reply_pair.first << ": " << other_state << std::endl;
+  }
+}
+
+/**
  * Main.
  */
 int main()
@@ -158,7 +193,7 @@ int main()
 	      return layout;
       }}};
 
-  auto state_subgroup_factory = [](PersistentRegistry *) { return std::make_unique<State>(13); };
+  auto state_subgroup_factory = [](PersistentRegistry *) { return std::make_unique<State>(INIT_STATE); };
   unsigned long long int max_msg_size = 100;
   DerechoParams derecho_params{max_msg_size, max_msg_size, max_msg_size};
   SubgroupInfo subgroup_info{subgroup_membership_functions};
@@ -177,26 +212,51 @@ int main()
   // 
   int n = group->members.size();
   int test_idx = 0;
+  auto subgroups = get_subgroups(group);
 
-  if (my_id == 0) {
+  if (my_id == 0 || my_id == 1) {
     if (n == 3) {
-      for (int i=0; i < 4; i++) {
-        if (tests[i]) {
-          // TODO
-        }
-      }
+      if (tests[0]) test_state(subgroups[test_idx++]);
+      if (tests[2]) test_state(subgroups[test_idx++]);
+      if (tests[3]) test_state(subgroups[test_idx++]);
+    } else if (n == 4 || n == 5) {
+      if (tests[0]) test_state(subgroups[test_idx++]);
+      if (tests[1]) test_state(subgroups[test_idx++]);
     }
   }
-  // Replicated<State> &stateHandle = group->get_subgroup<State>(0);
+  
+  else if (my_id == 2) {
+    if (n == 3) {
+      if (tests[0]) test_state(subgroups[test_idx++]);
+      if (tests[2]) test_state(subgroups[test_idx++]);
+    } else if (n == 4) {
+      if (tests[0]) test_state(subgroups[test_idx++]);
+      if (tests[1]) test_state(subgroups[test_idx++]);
+      if (tests[3]) test_state(subgroups[test_idx++]);
+    } else if (n == 5) {
+      if (tests[0]) test_state(subgroups[test_idx++]);
+      if (tests[1]) test_state(subgroups[test_idx++]);
+      if (tests[2]) test_state(subgroups[test_idx++]);
+      if (tests[3]) test_state(subgroups[test_idx++]);
+    }
+  }
+  
+  else if (my_id == 3) {
+    if (n == 4) {
+      if (tests[1]) test_state(subgroups[test_idx++]);
+      if (tests[3]) test_state(subgroups[test_idx++]);
+    } else if (n == 5) {
+      if (tests[1]) test_state(subgroups[test_idx++]);
+      if (tests[2]) test_state(subgroups[test_idx++]);
+      if (tests[3]) test_state(subgroups[test_idx++]);
+    }
+  }
 
-  // stateHandle.ordered_query<RPC_NAME(change_value)>(new_state);
-
-  // rpc::QueryResults<int> results = stateHandle.ordered_query<RPC_NAME(read_value)>();
-  // rpc::QueryResults<int>::ReplyMap& replies = results.get();
-  // for (auto& reply_pair: replies) {
-  //   std::cout << "Reply from node " << reply_pair.first << ": " << reply_pair.second.get() << std::endl;
-  // }
-
+  else if (my_id == 4) {
+    if (n == 5) {
+      if (tests[2]) test_state(subgroups[test_idx++]);
+    }
+  }
   std::cout << "Done checking state.";
 
   while (true) {}
