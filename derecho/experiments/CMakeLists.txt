@@ -185,4 +185,8 @@ target_link_libraries(random_messages derecho)
 add_executable(sample_application sample_application.cpp)
 target_link_libraries(sample_application derecho)
 
+#membership_tests
+add_executable(membership_tests membership_tests.cpp)
+target_link_libraries(membership_tests derecho)
+
 add_custom_target(format_experiments clang-format-3.8 -i *.cpp *.h)
