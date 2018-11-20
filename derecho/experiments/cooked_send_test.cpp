@@ -27,31 +27,32 @@ public:
   }
 
   bool verify_order(vector<pair<uint, uint>> v) {
-    if(v.size() != msgs.size()){
-      std::cout << "State vector sizes differ" << std::endl;
-      return false;
-    }
-    uint order[counter] = {};
-    uint fst, snd;
-    std::vector<pair<uint, uint>>::iterator a = msgs.begin();
-    std::vector<pair<uint, uint>>::iterator b = v.begin();
-    while(a != msgs.end()){
-      fst = a->first;
-      snd = a->second;
-      if(*a != *b){
-        std::cout << "Global order error!" << std::endl;
-        return false;
-      }
-      else if(snd != order[fst] + 1){ // may want to loosen to snd <= order[fst] for failing / rejoining
-        std::cout << "Local order error!" << std::endl;
-        return false;
-      }
-      order[fst] = snd;
-      ++a;
-      ++b;
-    }
-    std::cout << "Pass" << std::endl;
-    return true;
+    // if(v.size() != msgs.size()){
+    //   std::cout << "State vector sizes differ" << std::endl;
+    //   return false;
+    // }
+    // uint order[counter] = {};
+    // uint fst, snd;
+    // std::vector<pair<uint, uint>>::iterator a = msgs.begin();
+    // std::vector<pair<uint, uint>>::iterator b = v.begin();
+    // while(a != msgs.end()){
+    //   fst = a->first;
+    //   snd = a->second;
+    //   if(*a != *b){
+    //     std::cout << "Global order error!" << std::endl;
+    //     return false;
+    //   }
+    //   else if(snd <= order[fst]){ // != order[fst] +1;
+    //     std::cout << "Local order error!" << std::endl;
+    //     return false;
+    //   }
+    //   order[fst] = snd;
+    //   ++a;
+    //   ++b;
+    // }
+    // std::cout << "Pass" << std::endl;
+    // return true;
+    return (msgs == v);
   }
 
 
@@ -62,6 +63,24 @@ public:
   REGISTER_RPC_FUNCTIONS(CookedMessages, send, get_msgs, verify_order);
   
 };
+
+bool verify_local_order(vector<pair<uint, uint>> msgs){
+  uint order[counter] = {}; // make map instead
+  uint fst, snd;
+  std::vector<pair<uint, uint>>::iterator a = msgs.begin();
+  while(a != msgs.end()){
+    fst = a->first;
+    snd = a->second;
+    if(snd <= order[fst]){ // != order[fst] +1;
+      std::cout << "Local order error!" << std::endl;
+      return false;
+    }
+    order[fst] = snd;
+    ++a;
+  }
+  std::cout << "Pass" << std::endl;
+  return true;
+}
 
 int main(int argc, char *argv[]) {
     if(argc < 2) {
@@ -149,7 +168,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    for (uint i = 0; i < 50; ++i){
+    for (uint i = 1; i < 50; ++i){
       Replicated<CookedMessages>& cookedMessagesHandle = group->get_subgroup<CookedMessages>();
       cookedMessagesHandle.ordered_send<RPC_NAME(send)>(my_rank, i);
     }
@@ -157,7 +176,9 @@ int main(int argc, char *argv[]) {
     rpc::QueryResults<bool> results = cookedMessagesHandle.ordered_query<RPC_NAME(get_msgs)>();
     rpc::QueryResults<bool>::ReplyMap& replies = results.get();
     for (auto& reply_pair: replies) {
-        cookedMessagesHandle.ordered_send<RPC_NAME(verify_order)>(reply_pair.second.get());
+        vector<pair<uint, uint>> v = reply_pair.second.get();
+        cookedMessagesHandle.ordered_send<RPC_NAME(verify_order)>(v);
+        verify_local_order(v);
         break;
     }
     std::cout << "End of main. Waiting indefinitely" << std::endl;
