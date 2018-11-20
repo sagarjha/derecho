@@ -67,7 +67,7 @@ public:
 };
 
 bool verify_local_order(vector<pair<uint, uint>> msgs){
-  map<uint, uint> order; // make map instead
+  map<uint, uint> order; 
   uint fst, snd;
   std::vector<pair<uint, uint>>::iterator a = msgs.begin();
   while(a != msgs.end()){
@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    for (uint i = 1; i < 50; ++i){
+    for (uint i = 0; i < 50; ++i){
       Replicated<CookedMessages>& cookedMessagesHandle = group->get_subgroup<CookedMessages>();
       cookedMessagesHandle.ordered_send<RPC_NAME(send)>(my_rank, i);
     }
