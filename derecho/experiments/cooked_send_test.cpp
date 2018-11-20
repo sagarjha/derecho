@@ -2,11 +2,13 @@
 #include <derecho/view.h>
 
 #include <vector>
-#include <fstream>
+#include <map>
+#include <pair>
 
 using namespace derecho;
 using std::vector;
 using std::pair;
+using std::map;
 
 class CookedMessages : public mutils::ByteRepresentable {
   vector<pair<uint, uint>> msgs; // vector of (nodeid, msg #)
@@ -65,13 +67,13 @@ public:
 };
 
 bool verify_local_order(vector<pair<uint, uint>> msgs){
-  uint order[counter] = {}; // make map instead
+  map<uint, uint> order; // make map instead
   uint fst, snd;
   std::vector<pair<uint, uint>>::iterator a = msgs.begin();
   while(a != msgs.end()){
     fst = a->first;
     snd = a->second;
-    if(snd <= order[fst]){ // != order[fst] +1;
+    if (order.count(fst) != 0 && snd <= map.find(fst)){ // != order[fst] +1;
       std::cout << "Local order error!" << std::endl;
       return false;
     }
