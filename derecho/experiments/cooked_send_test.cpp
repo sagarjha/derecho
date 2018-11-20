@@ -10,7 +10,6 @@ using std::pair;
 
 class CookedMessages : public mutils::ByteRepresentable {
   vector<pair<uint, uint>> msgs; // vector of (nodeid, msg #)
-  uint msg = 0; // replaces file input
 
 public:
   CookedMessages (){
@@ -18,13 +17,12 @@ public:
   CookedMessages (const vector<pair<uint,uint>>& msgs) : msgs(msgs){
   }
 
-  void send(uint nodeid){
-    msg++;
+  void send(uint nodeid, uint msg){
     msgs.push_back(std::make_pair(nodeid, msg));
     std::cout << "Node " << nodeid << " sent msg " << msg << std::endl;
   }
 
-  vector<pair<uint, int>> get(){
+  vector<pair<uint, int>> get_msgs(){
     return msgs;
   }
 
@@ -61,10 +59,9 @@ public:
   DEFAULT_SERIALIZATION_SUPPORT(CookedMessages, msgs);
 
   // what operations you want as part of the subgroup
-  REGISTER_RPC_FUNCTIONS(CookedMessages, send, get, verify_order);
+  REGISTER_RPC_FUNCTIONS(CookedMessages, send, get_msgs, verify_order);
   
 };
-uint CookedMessages::counter = 0;
 
 int main(int argc, char *argv[]) {
     if(argc < 2) {
@@ -100,7 +97,7 @@ int main(int argc, char *argv[]) {
     CallbackSet callbacks{delivery_callback};
 
     std::map<std::type_index, shard_view_generator_t>
-      subgroup_membership_functions{{std::type_index(typeid(TicketBookingSystem)),
+      subgroup_membership_functions{{std::type_index(typeid(CookedMessages)),
              [num_nodes](const View& view, int&, bool) {
                auto& members = view.members;
                auto num_members = members.size();
@@ -116,7 +113,7 @@ int main(int argc, char *argv[]) {
                return layout;
              }}};
 
-    auto ticket_subgroup_factory = [num_tickets=100u] (PersistentRegistry*) {return std::make_unique<TicketBookingSystem>(num_tickets);};
+    auto ticket_subgroup_factory = [] (PersistentRegistry*) {return std::make_unique<CookedMessages>();};
     
     const unsigned long long int max_msg_size = 200;
     DerechoParams derecho_params{max_msg_size, max_msg_size, max_msg_size};
@@ -132,9 +129,9 @@ int main(int argc, char *argv[]) {
            };
     
     if(my_id == 0) {
-      group = new Group<TicketBookingSystem>(my_id, my_ip, callbacks, subgroup_info, derecho_params, vector<view_upcall_t>{view_upcall}, ticket_subgroup_factory);
+      group = new Group<CookedMessages>(my_id, my_ip, callbacks, subgroup_info, derecho_params, vector<view_upcall_t>{view_upcall}, ticket_subgroup_factory);
     } else {
-      group = new Group<TicketBookingSystem>(my_id, my_ip, leader_ip, callbacks, subgroup_info, vector<view_upcall_t>{view_upcall}, ticket_subgroup_factory);
+      group = new Group<CookedMessages>(my_id, my_ip, leader_ip, callbacks, subgroup_info, vector<view_upcall_t>{view_upcall}, ticket_subgroup_factory);
     }
 
     std::cout << "Finished constructing/joining the group" << std::endl;
@@ -152,15 +149,17 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    // // all members book a ticket
-    // Replicated<TicketBookingSystem>& ticketBookingHandle = group->get_subgroup<TicketBookingSystem>();
+    for (uint i = 0; i < 50; ++i){
+      Replicated<CookedMessages>& cookedMessagesHandle = group->get_subgroup<CookedMessages>();
+      cookedMessagesHandle.ordered_send<RPC_NAME(send)>(my_rank, i);
+    }
 
-    // rpc::QueryResults<bool> results = ticketBookingHandle.ordered_query<RPC_NAME(book)>(my_rank);
-    // rpc::QueryResults<bool>::ReplyMap& replies = results.get();
-    // for (auto& reply_pair: replies) {
-    //     std::cout << "Reply from node " << reply_pair.first << ": " << std::boolalpha << reply_pair.second.get() << std::endl;
-    // }
-    
+    rpc::QueryResults<bool> results = cookedMessagesHandle.ordered_query<RPC_NAME(get_msgs)>();
+    rpc::QueryResults<bool>::ReplyMap& replies = results.get();
+    for (auto& reply_pair: replies) {
+        cookedMessagesHandle.ordered_send<RPC_NAME(verify_order)>(reply_pair.second.get());
+        break;
+    }
     std::cout << "End of main. Waiting indefinitely" << std::endl;
     while(true) {
     }
