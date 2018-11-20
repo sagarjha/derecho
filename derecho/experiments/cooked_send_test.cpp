@@ -10,7 +10,6 @@ using std::pair;
 
 class CookedMessages : public mutils::ByteRepresentable {
   vector<pair<uint, uint>> msgs; // vector of (nodeid, msg #)
-  uint msg = 0; // replaces file input
 
 public:
   CookedMessages (){
@@ -18,8 +17,7 @@ public:
   CookedMessages (const vector<pair<uint,uint>>& msgs) : msgs(msgs){
   }
 
-  void send(uint nodeid){
-    msg++;
+  void send(uint nodeid, uint msg){
     msgs.push_back(std::make_pair(nodeid, msg));
     std::cout << "Node " << nodeid << " sent msg " << msg << std::endl;
   }
@@ -153,7 +151,7 @@ int main(int argc, char *argv[]) {
 
     for (uint i = 0; i < 50; ++i){
       Replicated<CookedMessages>& cookedMessagesHandle = group->get_subgroup<CookedMessages>();
-      cookedMessagesHandle.ordered_send<RPC_NAME(send)>(my_rank);
+      cookedMessagesHandle.ordered_send<RPC_NAME(send)>(my_rank, i);
     }
 
     rpc::QueryResults<bool> results = cookedMessagesHandle.ordered_query<RPC_NAME(get_msgs)>();
