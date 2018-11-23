@@ -42,11 +42,11 @@ bool verify_local_order(vector<pair<uint, uint>> msgs) {
   map<uint, uint> order;
   uint nodeid, msg;
   for(std::tie(nodeid, msg) : msgs) {
-    if (order.count(nodeid) != 0 && msg != order[nodeid] + 1) { // <= order[nodeid]
+    if (msg != order[nodeid] + 1) { // order.count(nodeid) != 0 && <= order[nodeid]
       std::cout << "Local order error!" << std::endl;
       return false;
     }
-    order[nodeid] = msg;
+    order[nodeid]++; // order[nodeid] = msg
   }
   std::cout << "Pass" << std::endl;
   return true;
@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
     }
 
     Replicated<CookedMessages>& cookedMessagesHandle = group->get_subgroup<CookedMessages>();
-    for(uint i = 0; i < 50; ++i) {
+    for(uint i = 1; i < 50; ++i) {
         cookedMessagesHandle.ordered_send<RPC_NAME(send)>(my_rank, i);
     }
 
