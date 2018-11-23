@@ -39,21 +39,30 @@ bool verify_global_order(const vector<pair<uint, uint>>& v1, const vector<pair<u
 }
 
 bool verify_local_order(vector<pair<uint, uint>> msgs) {
-    map<uint, uint> order;
-    for(auto& p : msgs) {
-        auto it = order.find(p.first);
-        if(it == order.end()) {
-            order[p.first] = p.second;
-        } else {
-            if(p.second <= it->second) {
-                std::cout << "Local order error!" << std::endl;
-                return false;
-            }
-            order[p.first] = p.second;
-        }
+  map<uint, uint> order;
+  uint nodeid, msg;
+  for(std::tie(nodeid, msg) : msgs) {
+    if (order.count(nodeid) != 0 && msg != order[nodeid] + 1) { // <= order[nodeid]
+      std::cout << "Local order error!" << std::endl;
+      return false;
     }
-    std::cout << "Pass" << std::endl;
-    return true;
+    order[nodeid] = msg;
+  }
+  std::cout << "Pass" << std::endl;
+  return true;
+    //     auto it = order.find(p.first);
+    //     if(it == order.end()) {
+    //         order[p.first] = p.second;
+    //     } else {
+    //         if(p.second <= it->second) {
+    //             std::cout << "Local order error!" << std::endl;
+    //             return false;
+    //         }
+    //         order[p.first] = p.second;
+    //     }
+    // }
+    // std::cout << "Pass" << std::endl;
+    // return true;
 }
 
 int main(int argc, char* argv[]) {
