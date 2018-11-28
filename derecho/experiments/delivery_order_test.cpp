@@ -167,7 +167,7 @@ int main() {
     while(!done) {
     }
     if (my_ip == leader_ip) {
-    std::cout << "Global ordering test successful!" << std::endl;      
+        std::cout << "Global ordering test successful!" << std::endl;
     }
     group->barrier_sync();
     group->leave();
