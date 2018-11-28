@@ -159,8 +159,8 @@ int main() {
 	vector<char> msgs_to_compare = *received_msgs_pair.second;
 	assert (msgs_to_compare == received_msgs);
       }
+      std::cout << "Global ordering test successful!" << std::endl;
     }
-    std::cout << "Global ordering test successful!" << std::endl;
     while(true) {
     }
 }
