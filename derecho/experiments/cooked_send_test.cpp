@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
 
     auto ticket_subgroup_factory = [](PersistentRegistry*) { return std::make_unique<CookedMessages>(); };
 
-    const unsigned long long int max_msg_size = 200;
+    const unsigned long long int max_msg_size = 20000;
     DerechoParams derecho_params{max_msg_size, max_msg_size, max_msg_size};
 
     SubgroupInfo subgroup_info(subgroup_membership_functions);
