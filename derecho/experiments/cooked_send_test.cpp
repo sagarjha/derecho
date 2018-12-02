@@ -41,12 +41,10 @@ bool verify_local_order(vector<pair<uint, uint>> msgs) {
     map<uint, uint> order;
     for(auto [nodeid, msg] : msgs) {
         if(msg != order[nodeid] + 1) {  // order.count(nodeid) != 0 && <= order[nodeid]
-            std::cout << "Local order error!" << std::endl;
             return false;
         }
         order[nodeid]++;  // order[nodeid] = msg
     }
-    std::cout << "Local ordering test successful!" << std::endl;
     return true;
 }
 
@@ -131,6 +129,7 @@ int main(int argc, char* argv[]) {
                     std::cout << "Error: Violation of local order!!!" << std::endl;
                     exit(1);
                 }
+                std::cout << "Local ordering test successful!" << std::endl;
                 first_reply = v;
                 is_first_reply = false;
             } else {
