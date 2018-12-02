@@ -33,10 +33,6 @@ public:
     REGISTER_RPC_FUNCTIONS(CookedMessages, send, get_msgs);
 };
 
-bool verify_global_order(const vector<pair<uint, uint>>& v1, const vector<pair<uint, uint>>& v2) {
-    return (v1 == v2);
-}
-
 bool verify_local_order(vector<pair<uint, uint>> msgs) {
     map<uint, uint> order;
     for(auto [nodeid, msg] : msgs) {
@@ -133,7 +129,7 @@ int main(int argc, char* argv[]) {
                 first_reply = v;
                 is_first_reply = false;
             } else {
-                if(!verify_global_order(first_reply, v)) {
+                if(first_reply != v) {
                     std::cout << "Error: Violation of global order!!!" << std::endl;
                     exit(1);
                 }
