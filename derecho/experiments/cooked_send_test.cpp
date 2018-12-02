@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
     const uint32_t num_nodes = atoi(argv[1]);
 
     node_id_t my_id;
-    ip_addr leader_ip, my_ip;
+    ip_addr_t leader_ip, my_ip;
 
     std::cout << "Enter my id: " << std::endl;
     std::cin >> my_id;
@@ -78,7 +78,7 @@ int main(int argc, char* argv[]) {
                          return layout;
                      }}};
 
-    auto ticket_subgroup_factory = [](PersistentRegistry*) { return std::make_unique<CookedMessages>(); };
+    auto cooked_subgroup_factory = [](PersistentRegistry*) { return std::make_unique<CookedMessages>(); };
 
     const unsigned long long int max_msg_size = 20000;
     DerechoParams derecho_params{max_msg_size, max_msg_size, max_msg_size};
@@ -86,9 +86,9 @@ int main(int argc, char* argv[]) {
     SubgroupInfo subgroup_info(subgroup_membership_functions);
 
     if(my_id == 0) {
-        group = new Group<CookedMessages>(my_id, my_ip, {}, subgroup_info, derecho_params, {}, ticket_subgroup_factory);
+        group = new Group<CookedMessages>(my_id, my_ip, {}, subgroup_info, derecho_params, {}, cooked_subgroup_factory);
     } else {
-        group = new Group<CookedMessages>(my_id, my_ip, leader_ip, {}, subgroup_info, {}, ticket_subgroup_factory);
+        group = new Group<CookedMessages>(my_id, my_ip, leader_ip, {}, subgroup_info, {}, cooked_subgroup_factory);
     }
 
     std::cout << "Finished constructing/joining the group" << std::endl;
@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
     }
 
     if(my_rank == 0) {
-        auto&& results = cookedMessagesHandle.ordered_query<RPC_NAME(get_msgs)>();
+        auto&& results = cookedMessagesHandle.ordered_send<RPC_NAME(get_msgs)>();
         auto& replies = results.get();
         bool is_first_reply = true;
         vector<pair<uint, uint>> first_reply;
