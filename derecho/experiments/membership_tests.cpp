@@ -5,7 +5,18 @@
 
 using namespace derecho;
 
-enum Tests {MIGRATION, INIT_EMPTY, INTER_EMPTY, DISJOINT_MEM};
+namespace myTests {
+enum Tests {
+    MIGRATION = 0,
+    INIT_EMPTY,
+    INTER_EMPTY,
+    DISJOINT_MEM
+};
+
+static const Tests AllTests[] = {MIGRATION, INIT_EMPTY, INTER_EMPTY, DISJOINT_MEM};
+}  // namespace myTests
+
+using namespace myTests;
 
 /**
  * A simple class that maintains a single variable.
@@ -88,25 +99,25 @@ void dis_mem_layout(std::vector<SubView>& layout, const View& view) {
 
 /**
  * Return handles of subgroups that current node is a member of.
- * 
- * TODO: Refactor to return int vector of subgroup indexes instead of handles. (why?)
  */
-std::vector<Replicated<State>> get_subgroups(Group<State> *group) {
-  std::vector<Replicated<State>> subgroups;
-  for (int i = 0; i < 4; i++) {
-    try {
-      auto& handle = group->get_subgroup<State>(i);
-      subgroups.push_back(std::move(handle));
+std::map<Tests, Replicated<State>&> get_subgroups(Group<State> *group, std::map<Tests, bool>& tests) {
+    std::map<Tests, Replicated<State>&> subgroups;
+    uint32_t subgroup_index = 0;
+    for(auto t : AllTests) {
+        if(!tests[t]) {
+            continue;
+        }
+        try {
+            auto& handle = group->get_subgroup<State>(subgroup_index);
+            subgroups.insert({t, handle});
+        } catch(const invalid_subgroup_exception e) {
+            continue;
+        } catch(...) {
+            exit(1);
+        }
+        subgroup_index++;
     }
-    catch (const invalid_subgroup_exception e) {
-      continue;
-    }
-    catch (const subgroup_provisioning_exception e) {
-      // if view not provisioned, return empty array
-      return std::vector<Replicated<State>>();
-    }
-  }
-  return subgroups;
+    return subgroups;
 }
 
 /**
@@ -154,7 +165,7 @@ int main()
   ip_addr leader_ip, my_ip;
 
   // could take these from command line
-  std::vector<bool> tests = {true, false, false, false};
+  std::map<Tests, bool> tests = {{Tests::MIGRATION, true}, {Tests::INIT_EMPTY, false}, {Tests::INTER_EMPTY, false}, {Tests::DISJOINT_MEM, false}};
 
   std::cout << "Enter my id: " << std::endl;
   std::cin >> my_id;
@@ -168,18 +179,17 @@ int main()
 
   std::map<std::type_index, shard_view_generator_t>
     subgroup_membership_functions{{std::type_index(typeid(State)),
-      [tests](const View& view, int&, bool) {
+      [&tests](const View& view, int&, bool) {
 	if (view.members.size() < 3) {
 	  throw subgroup_provisioning_exception();
         }
 	
-	subgroup_shard_layout_t layout(std::count(tests.begin(), tests.end(), true));
+	subgroup_shard_layout_t layout(std::count_if(tests.begin(), tests.end(), [](auto& p){return p.second;}));
 	
-        int test_idx = 0;
-        if (tests[Tests::MIGRATION]) migration_layout(layout[test_idx++], view);
-        if (tests[Tests::INIT_EMPTY]) init_empty_layout(layout[test_idx++], view);
-        if (tests[Tests::INTER_EMPTY]) inter_empty_layout(layout[test_idx++], view);
-        if (tests[Tests::DISJOINT_MEM]) dis_mem_layout(layout[test_idx++], view);
+        if (tests[Tests::MIGRATION]) migration_layout(layout[Tests::MIGRATION], view);
+        if (tests[Tests::INIT_EMPTY]) init_empty_layout(layout[Tests::INIT_EMPTY], view);
+        if (tests[Tests::INTER_EMPTY]) inter_empty_layout(layout[Tests::INTER_EMPTY], view);
+        if (tests[Tests::DISJOINT_MEM]) dis_mem_layout(layout[Tests::DISJOINT_MEM], view);
         
 	return layout;
       }
@@ -208,50 +218,49 @@ int main()
     std::getline(std::cin, input);
 
     int n = group->get_members().size();
-    int test_idx = 0;
-    auto subgroups = get_subgroups(group);
+    auto subgroups = get_subgroups(group, tests);
 
     if (my_id == 0 || my_id == 1) {
       if (n == 3) {
-	if (tests[Tests::MIGRATION]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::INTER_EMPTY]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups[test_idx++]);
+	if (tests[Tests::MIGRATION]) test_state(subgroups.at(Tests::MIGRATION));
+	if (tests[Tests::INTER_EMPTY]) test_state(subgroups.at(Tests::INTER_EMPTY));
+	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups.at(Tests::DISJOINT_MEM));
       } else if (n == 4 || n == 5) {
-	if (tests[Tests::MIGRATION]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::INIT_EMPTY]) test_state(subgroups[test_idx++]);
+	if (tests[Tests::MIGRATION]) test_state(subgroups.at(Tests::MIGRATION));
+	if (tests[Tests::INIT_EMPTY]) test_state(subgroups.at(Tests::INIT_EMPTY));
       }
     }
 
     else if (my_id == 2) {
       if (n == 3) {
-	if (tests[Tests::MIGRATION]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::INTER_EMPTY]) test_state(subgroups[test_idx++]);
+	if (tests[Tests::MIGRATION]) test_state(subgroups.at(Tests::MIGRATION));
+	if (tests[Tests::INTER_EMPTY]) test_state(subgroups.at(Tests::INTER_EMPTY));
       } else if (n == 4) {
-	if (tests[Tests::MIGRATION]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::INIT_EMPTY]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups[test_idx++]);
+	if (tests[Tests::MIGRATION]) test_state(subgroups.at(Tests::MIGRATION));
+	if (tests[Tests::INIT_EMPTY]) test_state(subgroups.at(Tests::INIT_EMPTY));
+	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups.at(Tests::DISJOINT_MEM));
       } else if (n == 5) {
-	if (tests[Tests::MIGRATION]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::INIT_EMPTY]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::INTER_EMPTY]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups[test_idx++]);
+	if (tests[Tests::MIGRATION]) test_state(subgroups.at(Tests::MIGRATION));
+	if (tests[Tests::INIT_EMPTY]) test_state(subgroups.at(Tests::INIT_EMPTY));
+	if (tests[Tests::INTER_EMPTY]) test_state(subgroups.at(Tests::INTER_EMPTY));
+	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups.at(Tests::DISJOINT_MEM));
       }
     }
 
     else if (my_id == 3) {
       if (n == 4) {
-	if (tests[Tests::INIT_EMPTY]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups[test_idx++]);
+	if (tests[Tests::INIT_EMPTY]) test_state(subgroups.at(Tests::INIT_EMPTY));
+	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups.at(Tests::DISJOINT_MEM));
       } else if (n == 5) {
-	if (tests[Tests::INIT_EMPTY]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::INTER_EMPTY]) test_state(subgroups[test_idx++]);
-	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups[test_idx++]);
+	if (tests[Tests::INIT_EMPTY]) test_state(subgroups.at(Tests::INIT_EMPTY));
+	if (tests[Tests::INTER_EMPTY]) test_state(subgroups.at(Tests::INTER_EMPTY));
+	if (tests[Tests::DISJOINT_MEM]) test_state(subgroups.at(Tests::DISJOINT_MEM));
       }
     }
 
     else if (my_id == 4) {
       if (n == 5) {
-	if (tests[Tests::INTER_EMPTY]) test_state(subgroups[test_idx++]);
+	if (tests[Tests::INTER_EMPTY]) test_state(subgroups.at(Tests::INTER_EMPTY));
       }
     } 
   }

@@ -154,7 +154,7 @@ int main() {
     std::cout << "Attempting to send messages" << std::endl;
     while(msg_counter < num_msgs) {
         getline(input_file, line);
-        std::cout << "Sending message: " << line << std::endl;
+        // std::cout << "Sending message: " << line << std::endl;
 	std::cout << "Message size is: " << line.size() << std::endl;
         buf = group_as_subgroup.get_sendbuffer_ptr(msg_size);
         while(!buf) {
