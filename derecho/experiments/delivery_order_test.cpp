@@ -58,7 +58,7 @@ int main() {
 
     Group<>* group;
 
-    auto get_next_line = [input_file_map](node_id_t sender_id) {
+    auto get_next_line = [&input_file_map](node_id_t sender_id) {
         string line;
         if(input_file_map.at(sender_id)->is_open()) {
             getline(*(input_file_map.at(sender_id)), line);
@@ -86,7 +86,9 @@ int main() {
             }
         } else if(num_received_msgs_map[sender_id] <= num_msgs) {
             received_msgs.push_back(sender_id);
-            if(get_next_line(sender_id) != buf) {
+	    string line = get_next_line(sender_id);
+	    string msg_received(buf);
+            if(line != msg_received) {
                 std::cout << "Error: Message contents mismatch or violation of local order!!!" << std::endl;
                 exit(1);
             }
