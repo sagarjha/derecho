@@ -87,7 +87,7 @@ int main() {
         } else if(num_received_msgs_map[sender_id] <= num_msgs) {
             received_msgs.push_back(sender_id);
 	    string line = get_next_line(sender_id);
-	    string msg_received(buf);
+	    string msg_received(buf, size);
             if(line != msg_received) {
                 std::cout << "Error: Message contents mismatch or violation of local order!!!" << std::endl;
                 exit(1);
@@ -155,11 +155,17 @@ int main() {
     while(msg_counter < num_msgs) {
         getline(input_file, line);
         std::cout << "Sending message: " << line << std::endl;
+	std::cout << "Message size is: " << line.size() << std::endl;
         buf = group_as_subgroup.get_sendbuffer_ptr(msg_size);
         while(!buf) {
             buf = group_as_subgroup.get_sendbuffer_ptr(msg_size);
         }
         line.copy(buf, line.size());
+	// std::cout << "Buffer is: " << std::endl;
+	// for (int i = 0; buf[i]; i++) {
+	//   std::cout << buf[i];
+	// }
+	// std::cout << std::endl;
         group_as_subgroup.send();
         msg_counter = msg_counter + 1;
     }
