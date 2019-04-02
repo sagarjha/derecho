@@ -125,7 +125,7 @@ add_executable(debug_failure_test debug_failure_test.cpp)
 target_link_libraries(debug_failure_test derecho)
 
 # count_write
-add_executable(count_write count_write.cpp)
+add_executable(count_write count_write.cpp initialize.cpp)
 target_link_libraries(count_write sst)
 
 # rdma_for_ml.cpp

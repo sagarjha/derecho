@@ -5,6 +5,7 @@
 #include <iostream>
 #include <map>
 
+#include "initialize.h"
 #include "sst/poll_utils.h"
 #include "sst/sst.h"
 //Since all SST instances are named sst, we can use this convenient hack
@@ -29,30 +30,20 @@ public:
     SSTField<bool> heartbeat;
 };
 
-int main() {
-    // input number of nodes and the local node rank
-    std::cout << "Enter node_rank and num_nodes" << std::endl;
-    uint32_t node_rank, num_nodes;
-    cin >> node_rank >> num_nodes;
-
-    std::cout << "Input the IP addresses" << std::endl;
-    uint16_t port = 32567;
-    // input the ip addresses
-    map<uint32_t, std::pair<std::string, uint16_t>> ip_addrs_and_ports;
-    for(uint i = 0; i < num_nodes; ++i) {
-      std::string ip;
-      cin >> ip;
-      ip_addrs_and_ports[i] = {ip, port};
+int main(int argc, char* argv[]) {
+    if(argc < 2) {
+        std::cout << "Error: Expected number of nodes as the first argument" << std::endl;
+        return -1;
     }
-    std::cout << "Using the default port value of " << port << std::endl;
-
+    const uint32_t num_nodes = std::atoi(argv[1]);
+    const uint32_t node_id = derecho::getConfUInt32(CONF_DERECHO_LOCAL_ID);
     // initialize the rdma resources
 #ifdef USE_VERBS_API
-    verbs_initialize(ip_addrs_and_ports, node_rank);
+    verbs_initialize(initialize(num_nodes), node_id);
 #else
-    lf_initialize(ip_addrs_and_ports, node_rank);
+    lf_initialize(initialize(num_nodes), node_id);
 #endif
-
+    
     // form a group with a subset of all the nodes
     vector<uint32_t> members(num_nodes);
     for(unsigned int i = 0; i < num_nodes; ++i) {
@@ -60,8 +51,8 @@ int main() {
     }
 
     // create a new shared state table with all the members
-    mySST sst(members, node_rank);
-    sst.a[node_rank] = 0;
+    mySST sst(members, node_id);
+    sst.a[node_id] = 0;
     sst.put((char*)std::addressof(sst.a[0]) - sst.getBaseAddress(), sizeof(int));
 
     auto check_failures_loop = [&sst]() {
@@ -86,7 +77,7 @@ int main() {
     }
 
     for(unsigned int i = 0; i < num_nodes; ++i) {
-        if(i == node_rank) {
+        if(i == node_id) {
             continue;
         }
         sync(i);
@@ -114,10 +105,10 @@ int main() {
             clock_gettime(CLOCK_REALTIME, &end_time);
             // my_time is time taken to count
             double my_time = ((end_time.tv_sec * 1e9 + end_time.tv_nsec) - (start_time.tv_sec * 1e9 + start_time.tv_nsec)) / 1e9;
-            int node_rank = sst.get_local_index();
+            int node_id = sst.get_local_index();
             // node 0 finds the average by reading all the times taken by remote nodes
             // Anyway, the values will be quite close as the counting is synchronous
-            if(node_rank == 0) {
+            if(node_id == 0) {
                 int num_nodes = sst.get_num_rows();
                 resources* res;
                 double times[num_nodes];
@@ -128,10 +119,10 @@ int main() {
 
                 // read the other nodes' time
                 for(int i = 0; i < num_nodes; ++i) {
-                    if(i == node_rank) {
+                    if(i == node_id) {
                         times[i] = my_time;
                     } else {
-                        res = new resources(i, (char*)&my_time, (char*)&times[i], sizeof(double), sizeof(double), node_rank < i);
+                        res = new resources(i, (char*)&my_time, (char*)&times[i], sizeof(double), sizeof(double), node_id < i);
                         res->post_remote_read(id, sizeof(double));
                         free(res);
                     }
@@ -153,7 +144,7 @@ int main() {
 
                 // sync to tell other nodes to exit
                 for(int i = 0; i < num_nodes; ++i) {
-                    if(i == node_rank) {
+                    if(i == node_id) {
                         continue;
                     }
                     sync(i);
