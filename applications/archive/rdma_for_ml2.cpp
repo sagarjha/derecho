@@ -11,6 +11,7 @@
 
 #include "sst/poll_utils.h"
 #include "sst/sst.h"
+#include "initialize.h"
 
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -70,7 +71,7 @@ void shdelete(void *maddr, int shmid) {
 	}
 }
 
-int semalloc(key_t key, int dimension, int permission) 
+int semalloc(key_t key, int dimension, int permission)
 {
     int ret = semget(key, dimension, permission);
     if (ret < 0) {
@@ -121,28 +122,14 @@ int main(int argc, char* argv[]) {
     const key_t sm_shk = std::stoi(argv[4]);
 
     uint32_t my_id = getConfUInt32(CONF_DERECHO_LOCAL_ID);
-    
-    std::cout << "Input the IP addresses" << std::endl;
-    // assume all have the same port
-//    uint16_t port = getConfUInt16(CONF_DERECHO_SST_PORT);
-    // input the ip addresses
-    std::map<uint32_t, std::pair<std::string, uint16_t>> ip_addrs_and_ports;
-    for(uint i = 0; i < num_nodes; ++i) {
-        std::string ip;
-        std::cin >> ip;
-	std::cerr << ip << std::endl;
-        uint32_t port;
-        std::cin >> port;
-        ip_addrs_and_ports[i] = {ip, port};
-    }
 
     std::cout << my_id << endl;
 
     // initialize the rdma resources
 #ifdef USE_VERBS_API
-    verbs_initialize(ip_addrs_and_ports, my_id);
+    verbs_initialize(initialize(num_nodes), my_id);
 #else
-    lf_initialize(ip_addrs_and_ports, my_id);
+    lf_initialize(initialize(num_nodes), my_id);
 #endif
 
     std::cerr << "init done!" << endl;

@@ -128,12 +128,16 @@ target_link_libraries(debug_failure_test derecho)
 add_executable(count_write count_write.cpp initialize.cpp)
 target_link_libraries(count_write sst)
 
+# each_worker_multiple_msg
+add_executable(each_worker_multiple_msg each_worker_multiple_msg.cpp initialize.cpp)
+target_link_libraries(each_worker_multiple_msg sst)
+
 # rdma_for_ml.cpp
-add_executable(rdma_for_ml rdma_for_ml.cpp)
+add_executable(rdma_for_ml rdma_for_ml.cpp initialize.cpp)
 target_link_libraries(rdma_for_ml sst pthread)
 
 # rdma_for_ml2.cpp
-add_executable(rdma_for_ml2 rdma_for_ml2.cpp)
+add_executable(rdma_for_ml2 rdma_for_ml2.cpp initialize.cpp)
 target_link_libraries(rdma_for_ml2 sst pthread)
 
 # sst_test

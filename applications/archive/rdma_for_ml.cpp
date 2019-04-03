@@ -11,6 +11,7 @@
 
 #include "sst/poll_utils.h"
 #include "sst/sst.h"
+#include "initialize.h"
 
 using namespace derecho;
 using namespace sst;
@@ -52,30 +53,16 @@ int main(int argc, char* argv[]) {
     const uint32_t num_params = std::stoi(argv[2]);
 
     uint32_t my_id = getConfUInt32(CONF_DERECHO_LOCAL_ID);
-    
-    // // assume all have the same port
-    // uint16_t port = getConfUInt16(CONF_DERECHO_SST_PORT);
-    // std::cout << "Port is: " << port << std::endl;
-    // input the ip addresses
-    std::cout << "Input the IP addresses" << std::endl;
-    std::map<uint32_t, std::pair<std::string, uint16_t>> ip_addrs_and_ports;
-    for(uint i = 0; i < num_nodes; ++i) {
-        std::string ip;
-        std::cin >> ip;
-	uint16_t port;
-	std::cin >> port;
-        ip_addrs_and_ports[i] = {ip, port};
-    }
 
     // initialize the rdma resources
 #ifdef USE_VERBS_API
-    verbs_initialize(ip_addrs_and_ports, my_id);
+    verbs_initialize(initialize(num_nodes), my_id);
 #else
-    lf_initialize(ip_addrs_and_ports, my_id);
+    lf_initialize(initialize(num_nodes), my_id);
 #endif
 
     std::cout << "Finished the initialization" << std::endl;
-    
+
     // form a group with a subset of all the nodes
     std::vector<uint32_t> members(num_nodes);
     for(unsigned int i = 0; i < num_nodes; ++i) {
