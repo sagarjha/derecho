@@ -2,7 +2,7 @@ import shutil
 import sys
 import os
 
-def replace_id_port_domain(cfg_file, i):
+def update_id_port_domain(cfg_file, i):
     id_and_port = \
         ['local_id', 'gms_port', 'rpc_port', 'sst_port', 'rdmc_port']
 
@@ -30,8 +30,6 @@ if __name__ == '__main__':
     max_proc_num = int(sys.argv[2]) # maximum process number
     cfg_abs_path = os.path.abspath('derecho.cfg')
 
-    print(dst_abs_path, max_proc_num, cfg_abs_path)
-
     for i in range(max_proc_num):
         dir_name = 'process'+str(i)
         proc_dir = os.path.join(dst_abs_path, dir_name)
@@ -41,7 +39,7 @@ if __name__ == '__main__':
             shutil.copy2(cfg_abs_path, proc_dir)
             print('derecho.cfg Created')
             cfg_file = os.path.join(proc_dir, 'derecho.cfg')
-            replace_id_port_domain(cfg_file, i)
+            update_id_port_domain(cfg_file, i)
         else:
             print('Directory ', dir_name, ' already exists')
 
