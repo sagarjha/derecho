@@ -30,15 +30,15 @@ def read_derecho_cfg():
 
     for line in lines:
         words = line.strip().split()
-        if '#' in words or len(line) < 3:
-            continue
-        else:
-            if words[0] == 'semaphore_key':
-                semaphore_key = words[2]
-            elif words[0] == 'shared_memory_key':
-                shared_memory_key = words[2]
+    if '#' in words or len(line) < 3:
+        continue
+    else:
+        if words[0] == 'semaphore_key':
+            semaphore_key = words[2]
+        elif words[0] == 'shared_memory_key':
+            shared_memory_key = words[2]
 
-    return int(semaphore_key), int(shared_memory_key)
+return int(semaphore_key), int(shared_memory_key)
 
 # Derecho parameter
 assert len(sys.argv) == 3
@@ -66,25 +66,25 @@ Y = tf.placeholder("float", [None, num_classes])
 
 # Store layers weight & bias
 weights = {
-    'h1': tf.Variable(tf.random_normal([num_input, n_hidden_1])),
-    'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-    'out': tf.Variable(tf.random_normal([n_hidden_2, num_classes]))
+'h1': tf.Variable(tf.random_normal([num_input, n_hidden_1])),
+'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
+'out': tf.Variable(tf.random_normal([n_hidden_2, num_classes]))
 }
 biases = {
-    'b1': tf.Variable(tf.random_normal([n_hidden_1])),
-    'b2': tf.Variable(tf.random_normal([n_hidden_2])),
-    'out': tf.Variable(tf.random_normal([num_classes]))
+'b1': tf.Variable(tf.random_normal([n_hidden_1])),
+'b2': tf.Variable(tf.random_normal([n_hidden_2])),
+'out': tf.Variable(tf.random_normal([num_classes]))
 }
 
 # Create model
 def neural_net(x):
-    # Hidden fully connected layer with 256 neurons
-    layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
-    # Hidden fully connected layer with 256 neurons
-    layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
-    # Output fully connected layer with a neuron for each class
-    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
-    return out_layer
+# Hidden fully connected layer with 256 neurons
+layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
+# Hidden fully connected layer with 256 neurons
+layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
+# Output fully connected layer with a neuron for each class
+out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
+return out_layer
 
 # Construct model
 logits = neural_net(X)
@@ -115,15 +115,30 @@ derecho = subprocess.Popen([derecho_program, str(num_nodes), str(SIZE), str(sema
 node_id = int(derecho.stdout.readline().decode("utf-8").strip())
 
 if node_id == 0 :
-    print("server {}".format(SIZE))
-    while True :
-        continue
+print("server {}".format(SIZE))
+while True :
+    continue
 
 # Import MNIST data
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
 
 sem.acquire()
+options = dict(dtype=dtype, reshape=reshape, seed=None)
+
+train = DataSet(mnist.train.images[:int(len(mnist.train.images)/derecho_numnode)],
+           mnist.train.images[:int(len(mnist.train.labels)/derecho_numnode)],
+           **options)
+
+test = DataSet(mnist.test.images[:int(len(mnist.test.images)/derecho_numnode)],
+           mnist.test.images[:int(len(mnist.test.labels)/derecho_numnode)],
+           **options)
+
+validation = DataSet(mnist.validation.images[:int(len(mnist.validation.images)/derecho_numnode)],
+           mnist.validation.images[:int(len(mnist.validation.labels)/derecho_numnode)],
+           **options)
+mnist = base.Datasets(train=train, validation=validation, test=test)
+
 # Start training
 with tf.Session() as sess:
     # Run the initializer
