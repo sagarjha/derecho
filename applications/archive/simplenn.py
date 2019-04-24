@@ -113,14 +113,20 @@ if int(message.decode("utf-8").strip()) == 0 :
 
 sem.acquire()
 
-mnist.train.images = mnist.train.images[:int(len(mnist.train.images)/derecho_numnode)]
-mnist.train.labels = mnist.train.images[:int(len(mnist.train.labels)/derecho_numnode)]
+options = dict(dtype=dtype, reshape=reshape, seed=None)
 
-mnist.test.images = mnist.test.images[:int(len(mnist.test.images)/derecho_numnode)]
-mnist.test.labels = mnist.test.images[:int(len(mnist.test.labels)/derecho_numnode)]
+train = DataSet(mnist.train.images[:int(len(mnist.train.images)/derecho_numnode)],
+               mnist.train.images[:int(len(mnist.train.labels)/derecho_numnode)],
+               **options)
 
-mnist.validation.images = mnist.validation.images[:int(len(mnist.validation.images)/derecho_numnode)]
-mnist.validation.labels = mnist.validation.images[:int(len(mnist.validation.labels)/derecho_numnode)]
+test = DataSet(mnist.test.images[:int(len(mnist.test.images)/derecho_numnode)],
+               mnist.test.images[:int(len(mnist.test.labels)/derecho_numnode)],
+               **options)
+
+validation = DataSet(mnist.validation.images[:int(len(mnist.validation.images)/derecho_numnode)],
+               mnist.validation.images[:int(len(mnist.validation.labels)/derecho_numnode)],
+               **options)
+mnist = base.Datasets(train=train, validation=validation, test=test)
 
 # Start training
 with tf.Session() as sess:
