@@ -9,15 +9,15 @@
 
 #include "derecho/derecho.h"
 
+#include "initialize.h"
 #include "sst/poll_utils.h"
 #include "sst/sst.h"
-#include "initialize.h"
 
-#include <sys/types.h>
 #include <sys/ipc.h>
-#include <sys/shm.h>
 #include <sys/sem.h>
-const int PERMISSION = 0666; //-rw-rw-rw-
+#include <sys/shm.h>
+#include <sys/types.h>
+const int PERMISSION = 0666;  //-rw-rw-rw-
 
 using namespace derecho;
 using namespace sst;
@@ -46,58 +46,55 @@ void print(const MLSST& sst) {
     cout << endl;
 }
 
-void* shmalloc(size_t size, int &shmid, key_t shkey) {
-	if ((shmid = shmget(shkey, size, IPC_CREAT | PERMISSION)) == -1) {
-		perror("shmget: shmget failed");
-		exit(-1);
-	}
-	void *ret;
-   	if ((ret = shmat(shmid, NULL, 0)) == (void*)-1) {
-		perror("shmat: shmat failed");
-		exit(-1);
-	}
-	return ret;
+void* shmalloc(size_t size, int& shmid, key_t shkey) {
+    if((shmid = shmget(shkey, size, IPC_CREAT | PERMISSION)) == -1) {
+        perror("shmget: shmget failed");
+        exit(-1);
+    }
+    void* ret;
+    if((ret = shmat(shmid, NULL, 0)) == (void*)-1) {
+        perror("shmat: shmat failed");
+        exit(-1);
+    }
+    return ret;
 }
 
-void shdelete(void *maddr, int shmid) {
-	if (shmdt(maddr) == -1) {
-		perror("shmdt: shmdt failed");
-		exit(-1);
-	}
-	if (shmctl(shmid, IPC_RMID, NULL) == -1) {
-		perror("shmctl: shmctl failed");
-		exit(-1);
-	}
+void shdelete(void* maddr, int shmid) {
+    if(shmdt(maddr) == -1) {
+        perror("shmdt: shmdt failed");
+        exit(-1);
+    }
+    if(shmctl(shmid, IPC_RMID, NULL) == -1) {
+        perror("shmctl: shmctl failed");
+        exit(-1);
+    }
 }
-int semalloc(key_t key, int dimension, int permission)
-{
+int semalloc(key_t key, int dimension, int permission) {
     int ret = semget(key, dimension, permission);
-    if (ret < 0) {
+    if(ret < 0) {
         perror("Cannot find semaphore, exiting.\n");
         exit(-1);
     }
     return ret;
 }
 
-void semacquire(int semid)
-{
+void semacquire(int semid) {
     struct sembuf op[1];
     op[0].sem_num = 0;
     op[0].sem_op = -1;
     op[0].sem_flg = 0;
-    if (semop(semid, op, 1) != 0) {
+    if(semop(semid, op, 1) != 0) {
         perror("Sem acquire failed, exiting. \n");
         exit(-1);
     }
 }
 
-void semrelease(int semid)
-{
+void semrelease(int semid) {
     struct sembuf op[1];
     op[0].sem_num = 0;
     op[0].sem_op = 1;
     op[0].sem_flg = 0;
-    if (semop(semid, op, 1) != 0) {
+    if(semop(semid, op, 1) != 0) {
         perror("Sem release failed, exiting. \n");
         exit(-1);
     }
@@ -147,7 +144,7 @@ int main(int argc, char* argv[]) {
     sst.sync_with_members();
 
     int semid = 0;
-    double *sm_ptr = NULL;
+    double* sm_ptr = NULL;
     uint32_t server_rank = 0;
     int size = num_params, shmid;
     double alpha = 0.05;
@@ -156,44 +153,37 @@ int main(int argc, char* argv[]) {
     semid = semalloc(sem_shk, 1, PERMISSION);
 
     if(my_rank == server_rank) {
-      long unsigned int *last_round = new long unsigned int[num_nodes];
-      // last_round[0] is not used since it is server's row.
-      for(uint row = 0; row < num_nodes; ++row) {
-        last_round[row] = 0;
-      }
+        for(uint row = 0; row < num_nodes; ++row) {
+            if(row == my_rank) {
+                continue;
+            }
 
-      for(uint row = 0; row < num_nodes; ++row) {
-        if (row == my_rank) {
-          continue;
+            std::function<bool(const MLSST&)> worker_gradient_updated = [row, last_round = (uint64_t)0](const MLSST& sst) mutable {
+                if(sst.round[row] > last_round) {
+                    last_round = sst.round[row];
+                    std::cerr << "Detected worker" << row << "'s gradient updated" << endl;
+                    return true;
+                }
+                return false;
+            };
+
+            std::function<void(MLSST&)> update_parameter = [row, my_rank, alpha](MLSST& sst) {
+                for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
+                    sst.ml_parameters[my_rank][param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_parameters[row][param];
+                }
+                sst.put_with_completion((char*)std::addressof(sst.ml_parameters[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_parameters[0][0]) * sst.ml_parameters.size());
+                sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[0]));
+            };
+
+            sst.predicates.insert(worker_gradient_updated, update_parameter, PredicateType::RECURRENT);
         }
-
-        std::function<bool(const MLSST&)> worker_grad_updated = [row, &last_round] (const MLSST& sst) {
-          if (sst.round[row] > last_round[row]) {
-            last_round[row] = sst.round[row];
-            std::cerr << "Detected worker" << row << "'s gradient updated" << endl;
-            return true;
-          }
-          return false;
-        };
-
-        std::function<void(MLSST&)> update_parameter = [row, my_rank, alpha](MLSST& sst) {
-          for (uint param = 0; param < sst.ml_parameters.size(); ++param) {
-            sst.ml_parameters[my_rank][param] -= (alpha/(sst.get_num_rows()-1))*sst.ml_parameters[row][param];
-          }
-          sst.put_with_completion((char*)std::addressof(sst.ml_parameters[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_parameters[0][0]) * sst.ml_parameters.size());
-          sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[0]));
-        };
-
-        sst.predicates.insert(worker_grad_updated, update_parameter, PredicateType::RECURRENT);
-      }
-    }
-    else {
+    } else {
         std::cerr << "Im a worker with keys: " << sm_shk << " " << sem_shk << endl;
         // shared stuff setup
 
         std::cerr << "releasing the lock" << endl;
         semrelease(semid);
-        std::cerr << "acquiring the lock" <<endl;
+        std::cerr << "acquiring the lock" << endl;
         semacquire(semid);
         std::cerr << "loading new paras" << endl;
         for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
@@ -209,7 +199,7 @@ int main(int argc, char* argv[]) {
         sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[0]));
 
         std::function<bool(const MLSST&)> server_done = [](const MLSST& sst) {
-          return true;
+            return true;
         };
 
         std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, semid, sm_ptr](MLSST& sst) {
