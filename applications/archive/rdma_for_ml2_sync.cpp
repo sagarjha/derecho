@@ -19,7 +19,6 @@
 #include <sys/sem.h>
 const int PERMISSION = 0666; //-rw-rw-rw-
 
-
 using namespace derecho;
 using namespace sst;
 using namespace std;
@@ -70,7 +69,6 @@ void shdelete(void *maddr, int shmid) {
 		exit(-1);
 	}
 }
-
 int semalloc(key_t key, int dimension, int permission)
 {
     int ret = semget(key, dimension, permission);
@@ -133,7 +131,7 @@ int main(int argc, char* argv[]) {
 #endif
 
     std::cerr << "init done!" << endl;
-    // form a group with a subset of all the nodes
+    // Form a group with a subset of all the nodes
     std::vector<uint32_t> members(num_nodes);
     for(unsigned int i = 0; i < num_nodes; ++i) {
         members[i] = i;
@@ -152,31 +150,35 @@ int main(int argc, char* argv[]) {
     double *sm_ptr = NULL;
     uint32_t server_rank = 0;
     int size = num_params, shmid;
+
     sm_ptr = (double*)shmalloc(sizeof(double) * size, shmid, sm_shk);
     semid = semalloc(sem_shk, 1, PERMISSION);
 
     if(my_rank == server_rank) {
-        std::function<bool(const MLSST&)> round_complete = [my_rank, server_rank](const MLSST& sst) {
+        std::function<bool(const MLSST&)> round_complete = [my_rank] (const MLSST& sst) {
             for(uint row = 0; row < sst.get_num_rows(); ++row) {
                 // ignore server row
-                if(row == server_rank) {
+                if(row == my_rank) {
                     continue;
                 }
                 if(sst.round[row] == sst.round[my_rank]) {
                     return false;
                 }
             }
+            //[kwang] If we know the worker's round is mnotonically increasing,
+            // then, if the server's round is different from all the worker's
+            // round, that implies the round has been completed by all workers.
             std::cerr << "round #" << sst.round[my_rank] << " complete" << endl;
             return true;
         };
 
-        std::function<void(MLSST&)> compute_average = [my_rank, server_rank](MLSST& sst) {
+        std::function<void(MLSST&)> compute_average = [my_rank](MLSST& sst) {
             //print(sst);
             for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
                 double sum = 0;
                 for(uint row = 0; row < sst.get_num_rows(); ++row) {
                     // ignore server row
-                    if(row == server_rank) {
+                    if(row == my_rank) {
                         continue;
                     }
                     sum += sst.ml_parameters[row][param];
@@ -190,7 +192,6 @@ int main(int argc, char* argv[]) {
 
         sst.predicates.insert(round_complete, compute_average, PredicateType::RECURRENT);
     }
-
     else {
         std::function<bool(const MLSST&)> server_done = [my_rank, server_rank](const MLSST& sst) {
             return sst.round[server_rank] == sst.round[my_rank];

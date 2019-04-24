@@ -14,28 +14,45 @@ import io
 import sysv_ipc
 import array
 import struct
-derecho_program = "../rdma_for_ml2"
-derecho_numnode = 2
-
-# shared semaphore and memory
-semshk = 314158
-smshk = 314259
-permission = 0o666
-size = None
-type_size = 8 # double
-byte_size = None
-
-# Import MNIST data
-from tensorflow.examples.tutorials.mnist import input_data
-mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+import sys
+import os
+import numpy
 
 import tensorflow as tf
 
-# Parameters
+def read_derecho_cfg():
+    pwd = os.getcwd()
+    cfg_filepath = os.path.join(pwd, 'derecho.cfg')
+    print("cfg_filepath {}".format(cfg_filepath))
+    assert os.path.exists(cfg_filepath)
+    with open(cfg_filepath, 'r') as f:
+        lines = f.readlines()
+
+    for line in lines:
+        words = line.strip().split()
+        if '#' in words or len(line) < 3:
+            continue
+        else:
+            if words[0] == 'semaphore_key':
+                semaphore_key = words[2]
+            elif words[0] == 'shared_memory_key':
+                shared_memory_key = words[2]
+
+    return int(semaphore_key), int(shared_memory_key)
+
+# Derecho parameter
+assert len(sys.argv) == 3
+derecho_program = sys.argv[1]
+num_nodes = sys.argv[2]
+semaphore_key, shared_memory_key = read_derecho_cfg()
+permission = 0o666
+type_size = 8 # double
+
+# ML Parameters
 learning_rate = 0.1
 num_steps = 1000
 batch_size = 128
-display_step = 1
+display_frequency = 1
 
 # Network Parameters
 n_hidden_1 = 256 # 1st layer number of neurons
@@ -59,7 +76,6 @@ biases = {
     'out': tf.Variable(tf.random_normal([num_classes]))
 }
 
-
 # Create model
 def neural_net(x):
     # Hidden fully connected layer with 256 neurons
@@ -75,8 +91,7 @@ logits = neural_net(X)
 prediction = tf.nn.softmax(logits)
 
 # Define loss and optimizer
-loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-    logits=logits, labels=Y))
+loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 train_op = optimizer.minimize(loss_op)
 
@@ -86,7 +101,6 @@ accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 # Initialize the variables (i.e. assign their default value)
 init = tf.global_variables_initializer()
-
 V = tf.trainable_variables()
 D = [v.get_shape() for v in V]
 SIZE = sum([d.num_elements() for d in D])
@@ -94,37 +108,33 @@ SIZE = sum([d.num_elements() for d in D])
 # shared memory
 size = SIZE
 byte_size = size * type_size
-sem = sysv_ipc.Semaphore(semshk, flags = sysv_ipc.IPC_CREAT, mode = permission, initial_value = 0)
-mem = sysv_ipc.SharedMemory(smshk, flags=sysv_ipc.IPC_CREAT, mode = permission, size = byte_size)
+sem = sysv_ipc.Semaphore(semaphore_key, flags = sysv_ipc.IPC_CREAT, mode = permission, initial_value = 0)
+mem = sysv_ipc.SharedMemory(shared_memory_key, flags=sysv_ipc.IPC_CREAT, mode = permission, size = byte_size)
 
-derecho = subprocess.Popen([derecho_program, str(derecho_numnode), str(SIZE), str(semshk), str(smshk)], stdin=subprocess.PIPE, stdout = subprocess.PIPE)
-message = derecho.stdout.readline()
-stdin_wrapper = io.TextIOWrapper(derecho.stdin, 'utf-8')
-stdin_wrapper.write("127.0.0.1\n")
-stdin_wrapper.write("37683\n")
-stdin_wrapper.write("127.0.0.1\n")
-stdin_wrapper.write("37684\n")
-stdin_wrapper.flush()
-message = derecho.stdout.readline()
-if int(message.decode("utf-8").strip()) == 0 :
-    print("server", SIZE)
+derecho = subprocess.Popen([derecho_program, str(num_nodes), str(SIZE), str(semaphore_key), str(shared_memory_key)], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+node_id = int(derecho.stdout.readline().decode("utf-8").strip())
+
+if node_id == 0 :
+    print("server {}".format(SIZE))
     while True :
         continue
 
-sem.acquire()
+# Import MNIST data
+from tensorflow.examples.tutorials.mnist import input_data
+mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
 
+sem.acquire()
 # Start training
 with tf.Session() as sess:
-
     # Run the initializer
     sess.run(init)
-    print("Total Steps: " + str(num_steps))
+    print("Total step: " + str(num_steps))
 
     for step in range(1, num_steps+1):
         batch_x, batch_y = mnist.train.next_batch(batch_size)
         # Run optimization op (backprop)
         sess.run(train_op, feed_dict={X: batch_x, Y: batch_y})
-        if step % display_step == 0 or step == 1:
+        if step % display_frequency == 0 or step == 1:
             # Calculate batch loss and accuracy
             loss, acc = sess.run([loss_op, accuracy], feed_dict={X: batch_x,
                                                                  Y: batch_y})
@@ -132,43 +142,27 @@ with tf.Session() as sess:
                   "{:.4f}".format(loss) + ", Training Accuracy= " + \
                   "{:.3f}".format(acc))
 
+            # Copying local memory to shared memory of rdma_for_ml2.
             V = tf.trainable_variables()
             D = [(v.name, v.value()) for v in V]
             arrays = [d[1].eval(session=sess) for d in D]
-
-            #print(arrays)
             sps = [arr.shape for arr in arrays]
             szs = [arr.size for arr in arrays]
-
-            #print(len(szs), szs)
             idxs = [szs[0]]
             for sz in szs[1:-1] :
                 idxs.append(idxs[-1] + sz)
-            #print(idxs)
-
+            # flatten
             lst = [arr.reshape([1, -1]) for arr in arrays]
-            import numpy
             tmp = numpy.concatenate((lst), axis = 1).ravel().tolist()
+            # write to the shared memory
             mem.write(struct.pack("%sd" % len(tmp), *tmp))
             sem.release()
-            print("releasing the lock")
-            sem.acquire()
-            print("acquired the lock")
-            #for ele in tmp :
-            #    #print("writing")
-            #    stdin_wrapper.write(str(ele) + " ")
-            #    stdin_wrapper.flush()
-            # tmp = ' '.join(map(str, tmp)) + "\n"
-            #stdin_wrapper.write(tmp)
-            #stdin_wrapper.write("\n")
-            #stdin_wrapper.flush()
 
+            # [TO DO] condition variable to make sure that the cpp would be waiting
+            sem.acquire()
 
             newparas = array.array("d", mem.read());
-            #newparas = derecho.stdout.readline().decode("utf-8")
             print(newparas, len(newparas))
-            print("roundgood")
-            #newparas = numpy.fromstring(newparas)
             newparas = numpy.frombuffer(newparas)
 
             rec = numpy.split(newparas, idxs)
