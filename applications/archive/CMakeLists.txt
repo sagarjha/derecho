@@ -144,6 +144,10 @@ target_link_libraries(rdma_for_ml2_sync sst pthread)
 add_executable(rdma_for_ml2_async rdma_for_ml2_async.cpp initialize.cpp)
 target_link_libraries(rdma_for_ml2_async sst pthread)
 
+# twbsst_test
+add_executable(twbsst twbsst.cpp)
+target_link_libraries(twbsst sst)
+
 # sst_test
 add_executable(sst_test sst_test.cpp)
 target_link_libraries(sst_test sst)
