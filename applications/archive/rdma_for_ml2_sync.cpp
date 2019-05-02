@@ -125,11 +125,6 @@ int main(int argc, char* argv[]) {
 
     const std::map<uint32_t, std::pair<ip_addr_t, uint16_t>> ip_addrs_and_ports = initialize(num_nodes);
 
-    std::vector<uint32_t> members;
-    for(auto p : ip_addrs_and_ports) {
-        members.push_back(p.first);
-    }
-
     // initialize the rdma resources
 #ifdef USE_VERBS_API
     verbs_initialize(ip_addrs_and_ports, my_id);
@@ -138,6 +133,11 @@ int main(int argc, char* argv[]) {
 #endif
 
     std::cerr << "init done!" << endl;
+
+    std::vector<uint32_t> members;
+    for(auto p : ip_addrs_and_ports) {
+        members.push_back(p.first);
+    }
 
     MLSST sst(members, my_id, num_params);
     uint32_t my_rank = sst.get_local_index();
