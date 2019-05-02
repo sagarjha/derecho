@@ -123,19 +123,21 @@ int main(int argc, char* argv[]) {
 
     std::cout << my_id << endl;
 
+    const std::map<uint32_t, std::pair<ip_addr_t, uint16_t>> ip_addrs_and_ports = initialize(num_nodes);
+
+    std::vector<uint32_t> members;
+    for(auto p : ip_addrs_and_ports) {
+        members.push_back(p.first);
+    }
+
     // initialize the rdma resources
 #ifdef USE_VERBS_API
-    verbs_initialize(initialize(num_nodes), my_id);
+    verbs_initialize(ip_addrs_and_ports, my_id);
 #else
-    lf_initialize(initialize(num_nodes), my_id);
+    lf_initialize(ip_addrs_and_ports, my_id);
 #endif
 
     std::cerr << "init done!" << endl;
-    // Form a group with a subset of all the nodes
-    std::vector<uint32_t> members(num_nodes);
-    for(unsigned int i = 0; i < num_nodes; ++i) {
-        members[i] = i;
-    }
 
     MLSST sst(members, my_id, num_params);
     uint32_t my_rank = sst.get_local_index();
