@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
     uint32_t my_id = getConfUInt32(CONF_DERECHO_LOCAL_ID);
 
     std::cout << my_id << endl;
-
+    
     const std::map<uint32_t, std::pair<ip_addr_t, uint16_t>> ip_addrs_and_ports = initialize(num_nodes);
 
     // initialize the rdma resources
@@ -131,9 +131,15 @@ int main(int argc, char* argv[]) {
 
     std::cerr << "init done!" << endl;
 
+    uint32_t server_id = ip_addrs_and_ports.begin()->first;
     std::vector<uint32_t> members;
-    for(auto p : ip_addrs_and_ports) {
+    if(my_id == server_id) {
+      for(auto p : ip_addrs_and_ports) {
         members.push_back(p.first);
+      }
+    } else {
+      members.push_back(server_id);
+      members.push_back(my_id);
     }
 
     MLSST sst(members, my_id, num_params);
