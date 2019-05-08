@@ -179,8 +179,8 @@ int main(int argc, char* argv[]) {
                 for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
                     sst.ml_parameters[my_rank][param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_parameters[row][param];
                 }
+                // push the model
                 sst.put_with_completion((char*)std::addressof(sst.ml_parameters[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_parameters[0][0]) * sst.ml_parameters.size());
-                sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[0]));
             };
 
             sst.predicates.insert(worker_gradient_updated, update_parameter, PredicateType::RECURRENT);
@@ -188,7 +188,6 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Im a worker with keys: " << sm_shk << " " << sem_shk << endl;
         // shared stuff setup
-
         std::cerr << "releasing the lock" << endl;
         semrelease(semid);
         std::cerr << "acquiring the lock" << endl;
@@ -196,10 +195,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "loading new paras" << endl;
         for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
             sst.ml_parameters[my_rank][param] = sm_ptr[param];
-            // double tmp;
-            // std::cin >> tmp;
-            // sst.ml_parameters[my_rank][param] = tmp;
-            //sst.ml_parameters[my_rank][param] = rand() % 100;
         }
 
         sst.put_with_completion((char*)std::addressof(sst.ml_parameters[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_parameters[0][0]) * sst.ml_parameters.size());
@@ -211,7 +206,6 @@ int main(int argc, char* argv[]) {
         };
 
         std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, semid, sm_ptr](MLSST& sst) {
-            //print(sst);
             std::cerr << "updating new parameter " << semid << " " << sm_ptr << endl;
             for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
                 sm_ptr[param] = sst.ml_parameters[server_rank][param];
@@ -223,14 +217,12 @@ int main(int argc, char* argv[]) {
             std::cerr << "reading the new updated grandient by python" << endl;
             for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
                 sst.ml_parameters[my_rank][param] = sm_ptr[param];
-                // double tmp;
-                // std::cin >> tmp;
-                // sst.ml_parameters[my_rank][param] = tmp;
-                //sst.ml_parameters[my_rank][param] = rand() % 100;
             }
 
+	    // push the gradient
             sst.put_with_completion((char*)std::addressof(sst.ml_parameters[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_parameters[0][0]) * sst.ml_parameters.size());
             sst.round[my_rank]++;
+	    // push the round number - only after the gradient has been pushed
             sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[0]));
         };
 
