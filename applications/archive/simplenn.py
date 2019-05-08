@@ -15,12 +15,14 @@ import sysv_ipc
 import array
 import struct
 derecho_program = "../rdma_for_ml2"
-derecho_numnode = 2
+derecho_numnode = 3
 
 # shared semaphore and memory
 semshk = 314158
-smshk = 314259
+smshk2cpp = 314159
+smshk2py = 314160
 permission = 0o666
+permission_readonly = 0o444
 size = None
 type_size = 8 # double
 byte_size = None
@@ -92,25 +94,43 @@ D = [v.get_shape() for v in V]
 SIZE = sum([d.num_elements() for d in D])
 
 # shared memory
+print("shared memory init")
 size = SIZE
 byte_size = size * type_size
-sem = sysv_ipc.Semaphore(semshk, flags = sysv_ipc.IPC_CREAT, mode = permission, initial_value = 0)
-mem = sysv_ipc.SharedMemory(smshk, flags=sysv_ipc.IPC_CREAT, mode = permission, size = byte_size)
+sem = sysv_ipc.Semaphore(semshk, flags = sysv_ipc.IPC_CREAT, mode = permission, initial_value = 1)
+sem.acquire()
 
-derecho = subprocess.Popen([derecho_program, str(derecho_numnode), str(SIZE), str(semshk), str(smshk)], stdin=subprocess.PIPE, stdout = subprocess.PIPE)
-message = derecho.stdout.readline()
-stdin_wrapper = io.TextIOWrapper(derecho.stdin, 'utf-8')
-stdin_wrapper.write("127.0.0.1\n")
-stdin_wrapper.write("37683\n")
-stdin_wrapper.write("127.0.0.1\n")
-stdin_wrapper.write("37684\n")
-stdin_wrapper.flush()
-message = derecho.stdout.readline()
-if int(message.decode("utf-8").strip()) == 0 :
+derecho = subprocess.Popen([derecho_program, str(derecho_numnode), str(SIZE), str(semshk), str(smshk2cpp), str(smshk2py)], stdin=subprocess.PIPE, stdout = subprocess.PIPE)
+#stdin_wrapper = io.TextIOWrapper(derecho.stdin, 'utf-8')
+#stdin_wrapper.write("127.0.0.1\n")
+#stdin_wrapper.write("37683\n")
+#stdin_wrapper.write("127.0.0.1\n")
+#stdin_wrapper.write("37684\n")
+#stdin_wrapper.flush()
+
+def getmessage(p) :
+    print("reading")
+    while True :
+        m = p.stdout.readline().decode("utf-8").strip()
+        if m.isdigit() :
+            print("reading finishes: " + m)
+            return m
+
+message = getmessage(derecho)
+if int(message) == 0 :
     print("server", SIZE)
+    sem.release()
     while True :
         continue
+offset2cpp = int(getmessage(derecho))
+offset2py = int(getmessage(derecho))
+print("offsets: " + str(offset2cpp) + " " + str(offset2py))
+mem2cpp = sysv_ipc.SharedMemory(smshk2cpp, 0, mode = permission, size = byte_size + offset2cpp)
+mem2py = sysv_ipc.SharedMemory(smshk2py, 0, mode = permission_readonly, size = byte_size + offset2py)
 
+newparas = array.array("d", mem2cpp.read(byte_size, offset2py));
+print("python setup: test :" + str(newparas[0]))
+sem.release()
 sem.acquire()
 
 # Start training
@@ -149,9 +169,10 @@ with tf.Session() as sess:
             lst = [arr.reshape([1, -1]) for arr in arrays]
             import numpy
             tmp = numpy.concatenate((lst), axis = 1).ravel().tolist()
-            mem.write(struct.pack("%sd" % len(tmp), *tmp))
-            sem.release()
+            mem2cpp.write(struct.pack("%sd" % len(tmp), *tmp), offset2cpp)
+            print(tmp[:10])
             print("releasing the lock")
+            sem.release()
             sem.acquire()
             print("acquired the lock")
             #for ele in tmp :
@@ -164,10 +185,12 @@ with tf.Session() as sess:
             #stdin_wrapper.flush()
 
 
-            newparas = array.array("d", mem.read());
+            newparas = array.array("d", mem2py.read(byte_size, offset2py));
+            print(newparas[:10])
             #newparas = derecho.stdout.readline().decode("utf-8")
-            print(newparas, len(newparas))
+            #print(newparas, len(newparas))
             print("roundgood")
+            input()
             #newparas = numpy.fromstring(newparas)
             newparas = numpy.frombuffer(newparas)
 
