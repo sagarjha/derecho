@@ -27,7 +27,7 @@ def update_id_port_domain(cfg_file, i):
         f.writelines(lines)
 
 def update_semaphore_key_and_shared_memory_key(cfg_file, i):
-    semkey_and_shmkey = ['semaphore_key', 'shared_memory_key']
+    semkey_and_shmkey = ['semaphore_key', 'shared_memory_key_to_cpp', 'shared_memory_key_to_py']
 
     with open(cfg_file, 'r') as f:
         lines = f.readlines()
