@@ -22,7 +22,6 @@ const int PERMISSION= 0666; //-rw-rw-rw-
 const int PERMISSION_RW = 0666; //-rw-rw-rw-
 const int PERMISSION_READONLY = 0666;
 
-
 using namespace derecho;
 using namespace sst;
 using namespace std;
@@ -94,7 +93,6 @@ void shdelete(void *maddr, int shmid) {
 		exit(-1);
 	}
 }
-
 int semalloc(key_t key, int dimension, int permission)
 {
     int ret = semget(key, dimension, permission);
@@ -149,19 +147,27 @@ int main(int argc, char* argv[]) {
     uint32_t my_id = getConfUInt32(CONF_DERECHO_LOCAL_ID);
 
     std::cout << my_id << endl;
-
+    
+    const std::map<uint32_t, std::pair<ip_addr_t, uint16_t>> ip_addrs_and_ports = initialize(num_nodes);
+    
     // initialize the rdma resources
 #ifdef USE_VERBS_API
-    verbs_initialize(initialize(num_nodes), my_id);
+    verbs_initialize(ip_addrs_and_ports, my_id);
 #else
-    lf_initialize(initialize(num_nodes), my_id);
+    lf_initialize(ip_addrs_and_ports, my_id);
 #endif
 
     std::cerr << "init done!" << endl;
-    // form a group with a subset of all the nodes
-    std::vector<uint32_t> members(num_nodes);
-    for(unsigned int i = 0; i < num_nodes; ++i) {
-        members[i] = i;
+
+    uint32_t server_id = ip_addrs_and_ports.begin()->first;
+    std::vector<uint32_t> members;
+    if(my_id == server_id) {
+      for(auto p : ip_addrs_and_ports) {
+        members.push_back(p.first);
+      }
+    } else {
+      members.push_back(server_id);
+      members.push_back(my_id);
     }
 
     MLSST sst(members, my_id, num_params);
@@ -195,28 +201,31 @@ int main(int argc, char* argv[]) {
     sst.sync_with_members();
 
     if(my_rank == server_rank) {
-        std::function<bool(const MLSST&)> round_complete = [my_rank, server_rank](const MLSST& sst) {
+        std::function<bool(const MLSST&)> round_complete = [my_rank] (const MLSST& sst) {
             for(uint row = 0; row < sst.get_num_rows(); ++row) {
                 // ignore server row
-                if(row == server_rank) {
+                if(row == my_rank) {
                     continue;
                 }
                 if(sst.round[row] == sst.round[my_rank]) {
                     return false;
                 }
             }
+            //[kwang] If we know the worker's round is mnotonically increasing,
+            // then, if the server's round is different from all the worker's
+            // round, that implies the round has been completed by all workers.
             std::cerr << "round #" << sst.round[my_rank] << " complete" << endl;
             std::cerr << sst.round[1] << endl;
             return true;
         };
 
-        std::function<void(MLSST&)> compute_average = [my_rank, server_rank](MLSST& sst) {
+        std::function<void(MLSST&)> compute_average = [my_rank](MLSST& sst) {
             //print(sst);
             for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
                 double sum = 0;
                 for(uint row = 0; row < sst.get_num_rows(); ++row) {
                     // ignore server row
-                    if(row == server_rank) {
+                    if(row == my_rank) {
                         continue;
                     }
                     sum += sst.ml_parameters[row][param];
@@ -233,7 +242,6 @@ int main(int argc, char* argv[]) {
 
         sst.predicates.insert(round_complete, compute_average, PredicateType::RECURRENT);
     }
-
     else {
         std::function<bool(const MLSST&)> server_done = [my_rank, server_rank](const MLSST& sst) {
             return sst.round[server_rank] == sst.round[my_rank];

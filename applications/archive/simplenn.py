@@ -14,30 +14,47 @@ import io
 import sysv_ipc
 import array
 import struct
-derecho_program = "../rdma_for_ml2"
-derecho_numnode = 3
-
-# shared semaphore and memory
-semshk = 314158
-smshk2cpp = 314159
-smshk2py = 314160
-permission = 0o666
-permission_readonly = 0o444
-size = None
-type_size = 8 # double
-byte_size = None
-
-# Import MNIST data
-from tensorflow.examples.tutorials.mnist import input_data
-mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+import sys
+import os
+import numpy
 
 import tensorflow as tf
 
-# Parameters
+def read_derecho_cfg():
+    pwd = os.getcwd()
+    cfg_filepath = os.path.join(pwd, 'derecho.cfg')
+    print("cfg_filepath {}".format(cfg_filepath))
+    assert os.path.exists(cfg_filepath)
+    with open(cfg_filepath, 'r') as f:
+        lines = f.readlines()
+
+    for line in lines:
+        words = line.strip().split()
+        if '#' in words or len(line) < 3:
+            continue
+        else:
+            if words[0] == 'semaphore_key':
+                semaphore_key = words[2]
+            elif words[0] == 'shared_memory_key_to_cpp':
+                shared_memory_key_to_cpp = words[2]
+            elif words[0] == 'shared_memory_key_to_py' :
+                shared_memory_key_to_py = words[2]
+
+    return int(semaphore_key), int(shared_memory_key_to_cpp), int(shared_memory_key_to_py)
+
+# Derecho parameter
+assert len(sys.argv) == 3
+derecho_program = sys.argv[1]
+num_nodes = sys.argv[2]
+semaphore_key, shared_memory_key_to_cpp, shared_memory_key_to_py = read_derecho_cfg()
+permission = 0o666
+type_size = 8 # double
+
+# ML Parameters
 learning_rate = 0.1
 num_steps = 1000
 batch_size = 128
-display_step = 1
+display_frequency = 1
 
 # Network Parameters
 n_hidden_1 = 256 # 1st layer number of neurons
@@ -61,7 +78,6 @@ biases = {
     'out': tf.Variable(tf.random_normal([num_classes]))
 }
 
-
 # Create model
 def neural_net(x):
     # Hidden fully connected layer with 256 neurons
@@ -77,8 +93,7 @@ logits = neural_net(X)
 prediction = tf.nn.softmax(logits)
 
 # Define loss and optimizer
-loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-    logits=logits, labels=Y))
+loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
 optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 train_op = optimizer.minimize(loss_op)
 
@@ -88,7 +103,6 @@ accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 # Initialize the variables (i.e. assign their default value)
 init = tf.global_variables_initializer()
-
 V = tf.trainable_variables()
 D = [v.get_shape() for v in V]
 SIZE = sum([d.num_elements() for d in D])
@@ -97,10 +111,9 @@ SIZE = sum([d.num_elements() for d in D])
 print("shared memory init")
 size = SIZE
 byte_size = size * type_size
-sem = sysv_ipc.Semaphore(semshk, flags = sysv_ipc.IPC_CREAT, mode = permission, initial_value = 1)
-sem.acquire()
+sem = sysv_ipc.Semaphore(semaphore_key, flags = sysv_ipc.IPC_CREAT, mode = permission, initial_value = 0)
 
-derecho = subprocess.Popen([derecho_program, str(derecho_numnode), str(SIZE), str(semshk), str(smshk2cpp), str(smshk2py)], stdin=subprocess.PIPE, stdout = subprocess.PIPE)
+derecho = subprocess.Popen([derecho_program, str(num_nodes), str(SIZE), str(semaphore_key), str(shared_memory_key_to_cpp), str(shared_memory_key_to_py)], stdin=subprocess.PIPE, stdout = subprocess.PIPE)
 #stdin_wrapper = io.TextIOWrapper(derecho.stdin, 'utf-8')
 #stdin_wrapper.write("127.0.0.1\n")
 #stdin_wrapper.write("37683\n")
@@ -117,7 +130,8 @@ def getmessage(p) :
             return m
 
 message = getmessage(derecho)
-if int(message) == 0 :
+node_id = int(message)
+if node_id == 0 :
     print("server", SIZE)
     sem.release()
     while True :
@@ -125,26 +139,44 @@ if int(message) == 0 :
 offset2cpp = int(getmessage(derecho))
 offset2py = int(getmessage(derecho))
 print("offsets: " + str(offset2cpp) + " " + str(offset2py))
-mem2cpp = sysv_ipc.SharedMemory(smshk2cpp, 0, mode = permission, size = byte_size + offset2cpp)
-mem2py = sysv_ipc.SharedMemory(smshk2py, 0, mode = permission_readonly, size = byte_size + offset2py)
+mem2cpp = sysv_ipc.SharedMemory(shared_memory_key_to_cpp, 0, mode = permission, size = byte_size + offset2cpp)
+mem2py = sysv_ipc.SharedMemory(shared_memory_key_to_py, 0, mode = permission, size = byte_size + offset2py)
 
 newparas = array.array("d", mem2cpp.read(byte_size, offset2py));
 print("python setup: test :" + str(newparas[0]))
 sem.release()
+
+# Import MNIST data
+from tensorflow.examples.tutorials.mnist import input_data
+mnist = input_data.read_data_sets("/tmp/data/", one_hot=True)
+
 sem.acquire()
+'''options = dict(dtype=numpy.dtype, reshape=numpy.reshape, seed=None)
+
+train = tf.DataSet(mnist.train.images[:int(len(mnist.train.images)/derecho_numnode)],
+           mnist.train.images[:int(len(mnist.train.labels)/derecho_numnode)],
+           **options)
+
+test = tf.DataSet(mnist.test.images[:int(len(mnist.test.images)/derecho_numnode)],
+           mnist.test.images[:int(len(mnist.test.labels)/derecho_numnode)],
+           **options)
+
+validation = tf.DataSet(mnist.validation.images[:int(len(mnist.validation.images)/derecho_numnode)],
+           mnist.validation.images[:int(len(mnist.validation.labels)/derecho_numnode)],
+           **options)
+mnist = tf.base.Datasets(train=train, validation=validation, test=test)'''
 
 # Start training
 with tf.Session() as sess:
-
     # Run the initializer
     sess.run(init)
-    print("Total Steps: " + str(num_steps))
+    print("Total step: " + str(num_steps))
 
     for step in range(1, num_steps+1):
         batch_x, batch_y = mnist.train.next_batch(batch_size)
         # Run optimization op (backprop)
         sess.run(train_op, feed_dict={X: batch_x, Y: batch_y})
-        if step % display_step == 0 or step == 1:
+        if step % display_frequency == 0 or step == 1:
             # Calculate batch loss and accuracy
             loss, acc = sess.run([loss_op, accuracy], feed_dict={X: batch_x,
                                                                  Y: batch_y})
@@ -152,45 +184,32 @@ with tf.Session() as sess:
                   "{:.4f}".format(loss) + ", Training Accuracy= " + \
                   "{:.3f}".format(acc))
 
+            # Copying local memory to shared memory of rdma_for_ml2.
             V = tf.trainable_variables()
             D = [(v.name, v.value()) for v in V]
             arrays = [d[1].eval(session=sess) for d in D]
-
-            #print(arrays)
             sps = [arr.shape for arr in arrays]
             szs = [arr.size for arr in arrays]
-
-            #print(len(szs), szs)
             idxs = [szs[0]]
             for sz in szs[1:-1] :
                 idxs.append(idxs[-1] + sz)
-            #print(idxs)
-
+            # flatten
             lst = [arr.reshape([1, -1]) for arr in arrays]
-            import numpy
             tmp = numpy.concatenate((lst), axis = 1).ravel().tolist()
+            # write to the shared memory
             mem2cpp.write(struct.pack("%sd" % len(tmp), *tmp), offset2cpp)
             print(tmp[:10])
             print("releasing the lock")
             sem.release()
+
+            # [TO DO] condition variable to make sure that the cpp would be waiting
             sem.acquire()
             print("acquired the lock")
-            #for ele in tmp :
-            #    #print("writing")
-            #    stdin_wrapper.write(str(ele) + " ")
-            #    stdin_wrapper.flush()
-            # tmp = ' '.join(map(str, tmp)) + "\n"
-            #stdin_wrapper.write(tmp)
-            #stdin_wrapper.write("\n")
-            #stdin_wrapper.flush()
-
 
             newparas = array.array("d", mem2py.read(byte_size, offset2py));
             print(newparas[:10])
-            #newparas = derecho.stdout.readline().decode("utf-8")
-            #print(newparas, len(newparas))
             print("roundgood")
-            input()
+            #input()
             #newparas = numpy.fromstring(newparas)
             newparas = numpy.frombuffer(newparas)
 

@@ -136,9 +136,17 @@ target_link_libraries(each_worker_multiple_msg sst)
 add_executable(rdma_for_ml rdma_for_ml.cpp initialize.cpp)
 target_link_libraries(rdma_for_ml sst pthread)
 
-# rdma_for_ml2.cpp
-add_executable(rdma_for_ml2 rdma_for_ml2.cpp initialize.cpp)
-target_link_libraries(rdma_for_ml2 sst pthread)
+# rdma_for_ml2_sync.cpp
+add_executable(rdma_for_ml2_sync rdma_for_ml2_sync.cpp initialize.cpp)
+target_link_libraries(rdma_for_ml2_sync sst pthread)
+
+# rdma_for_ml2_async.cpp
+add_executable(rdma_for_ml2_async rdma_for_ml2_async.cpp initialize.cpp)
+target_link_libraries(rdma_for_ml2_async sst pthread)
+
+# # three_way_buffer_test
+# add_executable(three_way_buffer_test three_way_buffer_test.cpp three_way_buffer.cpp)
+# target_link_libraries(three_way_buffer_test sst)
 
 # sst_test
 add_executable(sst_test sst_test.cpp)
