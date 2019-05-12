@@ -30,6 +30,10 @@ def parseArgs():
       '--server', 
       type=bool, 
       default=False)
+  parser.add_argument(
+      '--num-nodes', 
+      type=str, 
+      default="2")
   return parser.parse_args()
 
 
@@ -73,7 +77,7 @@ def main():
   TRAINING_NN_NAME = "python ./train.py"
   DERECHO_NAME = "./rdma_for_ml2_async"
 
-  NUM_NODE = '2'
+  NUM_NODE = args.num_nodes
   NUM_PARAM = str(784*10)
   ITEMSIZE = str(4)
 
