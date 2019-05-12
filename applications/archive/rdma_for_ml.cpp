@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
     uint32_t my_id = getConfUInt32(CONF_DERECHO_LOCAL_ID);
 
     const std::map<uint32_t, std::pair<ip_addr_t, uint16_t>> ip_addrs_and_ports = initialize(num_nodes);
-
+    
     // initialize the rdma resources
 #ifdef USE_VERBS_API
     verbs_initialize(ip_addrs_and_ports, my_id);
@@ -64,10 +64,15 @@ int main(int argc, char* argv[]) {
 #endif
 
     std::cout << "Finished the initialization" << std::endl;
-
+    uint32_t server_id = ip_addrs_and_ports.begin()->first;
     std::vector<uint32_t> members;
-    for(auto p : ip_addrs_and_ports) {
+    if(my_id == server_id) {
+      for(auto p : ip_addrs_and_ports) {
         members.push_back(p.first);
+      }
+    } else {
+      members.push_back(server_id);
+      members.push_back(my_id);
     }
 
     MLSST sst(members, my_id, num_params);
@@ -80,7 +85,6 @@ int main(int argc, char* argv[]) {
     sst.sync_with_members();
 
     uint32_t server_rank = 0;
-
     if(my_rank == server_rank) {
         std::function<bool(const MLSST&)> round_complete = [my_rank, server_rank](const MLSST& sst) {
             for(uint row = 0; row < sst.get_num_rows(); ++row) {

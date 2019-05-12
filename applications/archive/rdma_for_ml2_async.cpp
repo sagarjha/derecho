@@ -6,6 +6,9 @@
 #include <map>
 #include <unistd.h>
 #include <vector>
+#include<semaphore.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "derecho/derecho.h"
 
@@ -27,17 +30,17 @@ class MLSST : public SST<MLSST> {
 public:
     MLSST(const std::vector<uint32_t>& members, uint32_t my_id, uint32_t dimension)
             : SST<MLSST>(this, SSTParams{members, my_id}),
-              ml_parameters(dimension) {
-        SSTInit(ml_parameters, round);
+              ml_models(dimension) {
+        SSTInit(ml_models, round);
     }
-    SSTFieldVector<double> ml_parameters;
+    SSTFieldVector<double> ml_models;
     SSTField<uint64_t> round;
 };
 
 void print(const MLSST& sst) {
     for(uint row = 0; row < sst.get_num_rows(); ++row) {
-        for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
-            cout << sst.ml_parameters[row][param] << " ";
+        for(uint param = 0; param < sst.ml_models.size(); ++param) {
+            cout << sst.ml_models[row][param] << " ";
         }
         cout << endl;
 
@@ -46,58 +49,13 @@ void print(const MLSST& sst) {
     cout << endl;
 }
 
-void* shmalloc(size_t size, int& shmid, key_t shkey) {
-    if((shmid = shmget(shkey, size, IPC_CREAT | PERMISSION)) == -1) {
-        perror("shmget: shmget failed");
-        exit(-1);
-    }
-    void* ret;
-    if((ret = shmat(shmid, NULL, 0)) == (void*)-1) {
-        perror("shmat: shmat failed");
-        exit(-1);
-    }
-    return ret;
+
+inline sem_t *sem_init(const char* name) {
+	return sem_open(name, 0);
 }
 
-void shdelete(void* maddr, int shmid) {
-    if(shmdt(maddr) == -1) {
-        perror("shmdt: shmdt failed");
-        exit(-1);
-    }
-    if(shmctl(shmid, IPC_RMID, NULL) == -1) {
-        perror("shmctl: shmctl failed");
-        exit(-1);
-    }
-}
-int semalloc(key_t key, int dimension, int permission) {
-    int ret = semget(key, dimension, permission);
-    if(ret < 0) {
-        perror("Cannot find semaphore, exiting.\n");
-        exit(-1);
-    }
-    return ret;
-}
-
-void semacquire(int semid) {
-    struct sembuf op[1];
-    op[0].sem_num = 0;
-    op[0].sem_op = -1;
-    op[0].sem_flg = 0;
-    if(semop(semid, op, 1) != 0) {
-        perror("Sem acquire failed, exiting. \n");
-        exit(-1);
-    }
-}
-
-void semrelease(int semid) {
-    struct sembuf op[1];
-    op[0].sem_num = 0;
-    op[0].sem_op = 1;
-    op[0].sem_flg = 0;
-    if(semop(semid, op, 1) != 0) {
-        perror("Sem release failed, exiting. \n");
-        exit(-1);
-    }
+namespace sst {
+	char* MSHM;
 }
 
 int main(int argc, char* argv[]) {
@@ -105,21 +63,29 @@ int main(int argc, char* argv[]) {
     srand(getpid());
     std::cerr << "Derecho program starting up" << std::endl;
 
-    if(argc < 5) {
-        cout << "Usage: " << argv[0] << " <num_nodes> <num_params> <sem_shk> <sm_shk>" << endl;
+    if(argc < 8) {
+        cout << "Usage: " << argv[0] << " <num_nodes> <num_params> <itemsize> <model_sem_name> <grad_sem_name> <model_shm_name> <grad_shm_name>" << endl;
         return -1;
     }
 
     // the number of nodes for this test
     const uint32_t num_nodes = std::stoi(argv[1]);
     const uint32_t num_params = std::stoi(argv[2]);
-    const key_t sem_shk = std::stoi(argv[3]);
-    const key_t sm_shk = std::stoi(argv[4]);
+    const uint32_t itemsize = std::stoi(argv[3]);
+	const char* MSEM = argv[4];
+	const char* GSEM = argv[5];
+	sst::MSHM = argv[6];
+	const char* GSHM = argv[7];
+
+	//std::cout << sst::MSHM << std::endl;
+
+	sem_t *model_sem = sem_init(MSEM);
+	sem_t *grad_sem = sem_init(GSEM);
 
     uint32_t my_id = getConfUInt32(CONF_DERECHO_LOCAL_ID);
 
-    std::cout << my_id << endl;
-
+    //std::cout << my_id << endl;
+    
     const std::map<uint32_t, std::pair<ip_addr_t, uint16_t>> ip_addrs_and_ports = initialize(num_nodes);
 
     // initialize the rdma resources
@@ -131,35 +97,36 @@ int main(int argc, char* argv[]) {
 
     std::cerr << "init done!" << endl;
 
+    uint32_t server_id = ip_addrs_and_ports.begin()->first;
     std::vector<uint32_t> members;
-    for(auto p : ip_addrs_and_ports) {
+    if(my_id == server_id) {
+      for(auto p : ip_addrs_and_ports) {
         members.push_back(p.first);
+      }
+    } else {
+      members.push_back(server_id);
+      members.push_back(my_id);
     }
 
     MLSST sst(members, my_id, num_params);
     uint32_t my_rank = sst.get_local_index();
     // initialization
-    for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
-        sst.ml_parameters[my_rank][param] = 0;
-    }
     sst.round[my_rank] = 0;
     sst.sync_with_members();
 
-    int semid = 0;
-    double* sm_ptr = NULL;
     uint32_t server_rank = 0;
-    int size = num_params, shmid;
+    int size = num_params;
     double alpha = 0.05;
 
-    sm_ptr = (double*)shmalloc(sizeof(double) * size, shmid, sm_shk);
-    semid = semalloc(sem_shk, 1, PERMISSION);
 
     if(my_rank == server_rank) {
+	std::cout << "I'm a server" << std::endl;
         for(uint row = 0; row < num_nodes; ++row) {
             if(row == my_rank) {
                 continue;
             }
 
+		std::cout << "row" << row << std::endl;
             std::function<bool(const MLSST&)> worker_gradient_updated = [row, last_round = (uint64_t)0](const MLSST& sst) mutable {
                 if(sst.round[row] > last_round) {
                     last_round = sst.round[row];
@@ -170,62 +137,44 @@ int main(int argc, char* argv[]) {
             };
 
             std::function<void(MLSST&)> update_parameter = [row, my_rank, alpha](MLSST& sst) {
-                for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
-                    sst.ml_parameters[my_rank][param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_parameters[row][param];
+                for(uint param = 0; param < sst.ml_models.size(); ++param) {
+					//XXX: update gradient, - gradients?
+                    sst.ml_models[my_rank][param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];
                 }
-                sst.put_with_completion((char*)std::addressof(sst.ml_parameters[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_parameters[0][0]) * sst.ml_parameters.size());
-                sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[0]));
+                // push the model
+                //sst.put_with_completion((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[0][0]) * sst.ml_models.size());
+                sst.put_with_completion((char*)std::addressof(sst.ml_models[my_rank][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
+            	std::cerr << "pushed models to clients" << endl;
             };
 
             sst.predicates.insert(worker_gradient_updated, update_parameter, PredicateType::RECURRENT);
         }
     } else {
-        std::cerr << "Im a worker with keys: " << sm_shk << " " << sem_shk << endl;
-        // shared stuff setup
-
-        std::cerr << "releasing the lock" << endl;
-        semrelease(semid);
-        std::cerr << "acquiring the lock" << endl;
-        semacquire(semid);
-        std::cerr << "loading new paras" << endl;
-        for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
-            sst.ml_parameters[my_rank][param] = sm_ptr[param];
-            // double tmp;
-            // std::cin >> tmp;
-            // sst.ml_parameters[my_rank][param] = tmp;
-            //sst.ml_parameters[my_rank][param] = rand() % 100;
-        }
-
-        sst.put_with_completion((char*)std::addressof(sst.ml_parameters[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_parameters[0][0]) * sst.ml_parameters.size());
-        sst.round[my_rank]++;
-        sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[0]));
+		/**
+		 * worker
+		 */
+		// wait until python objects are moved to shared memory region.
+		sem_wait(model_sem);
+		sem_post(model_sem);
+        std::cerr << "I'm a worker"<< endl;
 
         std::function<bool(const MLSST&)> server_done = [](const MLSST& sst) {
             return true;
         };
 
-        std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, semid, sm_ptr](MLSST& sst) {
-            //print(sst);
-            std::cerr << "updating new parameter " << semid << " " << sm_ptr << endl;
-            for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
-                sm_ptr[param] = sst.ml_parameters[server_rank][param];
-            }
-            std::cerr << " " << sst.ml_parameters.size() << " " << sst.ml_parameters[server_rank][0] << std::endl;
-            semrelease(semid);
-            std::cerr << "Compute new gradient with paritioned data and optimizer in python" << semid << " " << sm_ptr << endl;
-            semacquire(semid);
-            std::cerr << "reading the new updated grandient by python" << endl;
-            for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
-                sst.ml_parameters[my_rank][param] = sm_ptr[param];
-                // double tmp;
-                // std::cin >> tmp;
-                // sst.ml_parameters[my_rank][param] = tmp;
-                //sst.ml_parameters[my_rank][param] = rand() % 100;
-            }
+        std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, grad_sem](MLSST& sst) {
+            //std::cerr << "updating new parameter " << endl;
+            sem_post(grad_sem);
+            //std::cerr << "Python turn" << endl;
+            sem_wait(grad_sem);
 
-            sst.put_with_completion((char*)std::addressof(sst.ml_parameters[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_parameters[0][0]) * sst.ml_parameters.size());
+	    	// push the gradient
+			// the reason to -sst.getBaseAddress() is that here we need an offset from base.
+            sst.put_with_completion((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
             sst.round[my_rank]++;
-            sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[0]));
+	    	// push the round number - only after the gradient has been pushed
+            sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[my_rank]));
+            //std::cerr << "pushed gradients to server" << endl;
         };
 
         sst.predicates.insert(server_done, compute_new_parameters, PredicateType::RECURRENT);
