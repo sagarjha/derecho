@@ -22,7 +22,7 @@ class Net(nn.Module):
 class Worker:
 
   # init training and load dataset
-  def __init__(self, model_optimizer_pairs, criterion):
+  def __init__(self, local_id, model_optimizer_pairs, criterion, world_size):
     """
     Loading dataset and init model.
     Parameters:
@@ -32,6 +32,7 @@ class Worker:
     self.criterion = criterion
     self.train_loader = self.load_dataset()
     self.config = self.load_config()
+    self.world_size = world_size
 
 
   def load_dataset(self):
@@ -40,22 +41,27 @@ class Worker:
     their own load_dataset method.
     This method should return a train_loader.
     """
-    self.train_dataset = torchvision.datasets.MNIST(
+    train_dataset = torchvision.datasets.MNIST(
         root='../data',
         train=True,
         transform=transforms.Compose([
           transforms.ToTensor()
           ]),
         download=True)
-    self.test_dataset = torchvision.datasets.MNIST(
+    """
+    test_dataset = torchvision.datasets.MNIST(
         root='../data',
         train=False,
         transform=transforms.Compose([
           transforms.ToTensor()
           ])
         )
+    """
+    data_split_size = len(train_dataset) // self.world_size
+    local_data = torch.utils.data.random_split(train_dataset, [data_split_size for i in range(self.world_size)])
+
     return torch.utils.data.DataLoader(
-        dataset=self.train_dataset,
+        dataset=local_data[local_id],
         batch_size=128,
         shuffle=True)
 
@@ -203,7 +209,7 @@ def moveGradientsToSharedMemory(model, mapfile, offset=0):
   return offset
 
 
-def launchDerecho(name, num_nodes, num_params, itemsize, model_sem, grad_sem, model_shm, 
+def launchDerecho(name, num_nodes, num_params, itemsize, model_sem, grad_sem, model_shm,
     grad_shm):
   subprocess.Popen([
     name,
@@ -242,33 +248,33 @@ def localTestSetup():
 
 def main():
   parser=argparse.ArgumentParser(description='RDMA for ml')
-  parser.add_argument('--epochs', 
-      type=int, 
-      default=100, 
+  parser.add_argument('--epochs',
+      type=int,
+      default=100,
       metavar='N')
-  parser.add_argument('--model-sem', 
-      type=str, 
-      default="MSEM", 
+  parser.add_argument('--model-sem',
+      type=str,
+      default="MSEM",
       help='name for model semaphores')
-  parser.add_argument('--model-shm', 
-      type=str, 
-      default="MSHM", 
+  parser.add_argument('--model-shm',
+      type=str,
+      default="MSHM",
       help='name for model shared memory')
-  parser.add_argument('--grad-sem', 
-      type=str, 
-      default="GSEM", 
+  parser.add_argument('--grad-sem',
+      type=str,
+      default="GSEM",
       help='name for gradident semaphores')
-  parser.add_argument('--grad-shm', 
-      type=str, 
-      default="GSHM", 
+  parser.add_argument('--grad-shm',
+      type=str,
+      default="GSHM",
       help='name for gradident shared memory')
-  parser.add_argument('--derecho-name', 
-      type=str, 
-      default="rdma_for_ml2_async", 
+  parser.add_argument('--derecho-name',
+      type=str,
+      default="rdma_for_ml2_async",
       help='name for derecho program')
-  parser.add_argument('--num-nodes', 
-      type=int, 
-      default=2, 
+  parser.add_argument('--num-nodes',
+      type=int,
+      default=2,
       help='number of nodes for training including server nodes')
   # more later
 
@@ -280,7 +286,7 @@ def main():
 
   model = nn.Linear(784, 10, bias=False)
 
-  num_params = reduce(lambda a, x: a + x, 
+  num_params = reduce(lambda a, x: a + x,
       map(lambda x: x.numel(), model.parameters()))
   itemsize = model.parameters().__next__().element_size()
 
@@ -300,9 +306,9 @@ def main():
   model_sem.release()
 
   criterion = nn.CrossEntropyLoss()
-  optimizer = torch.optim.SGD(model.parameters(), lr=0.001, weight_decay=1e-4)
+  optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=1e-4)
 
-  worker = Worker([(model, optimizer)], criterion)
+  worker = Worker(local_id, [(model, optimizer)], criterion, args.num-nodes)
   worker.init_sem(args.model_sem, args.grad_sem)
   worker.train()
 
