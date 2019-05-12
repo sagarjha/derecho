@@ -18,6 +18,12 @@
 
 #include "predicates.h"
 
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 #ifdef USE_VERBS_API
   #include "verbs.h"
 #else//LIBFABRIC
@@ -155,6 +161,7 @@ struct SSTParams {
               start_predicate_thread(start_predicate_thread) {}
 };
 
+
 template <class DerivedSST>
 class SST {
 private:
@@ -162,11 +169,27 @@ private:
     void init_SSTFields(Fields&... fields) {
         rowLen = 0;
         compute_rowLen(rowLen, fields...);
-        rows = new char[rowLen * num_members];
+        // rows = new char[rowLen * num_members];
+        rows = sharedRows(rowLen * num_members);
         // snapshot = new char[rowLen * num_members];
         volatile char* base = rows;
         set_bases_and_rowLens(base, rowLen, fields...);
     }
+
+	char *sharedRows(size_t len)
+	{
+		extern char* MSHM;
+		int fd = shm_open(MSHM, O_CREAT | O_EXCL | O_RDWR, 0666);
+		char *p = NULL;
+		std::cout << "length:" << len << " fd: " << fd << std::endl;
+		if (fd >= 0) {
+			ftruncate(fd, len);
+			p = (char *)mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+		} else {
+			p = new char[len];
+		}
+		return p;
+	}
 
     DerivedSST* derived_this;
 
