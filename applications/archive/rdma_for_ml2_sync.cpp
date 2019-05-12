@@ -203,6 +203,7 @@ int main(int argc, char* argv[]) {
         sst.ml_parameters[my_rank][param] = 0;
     }
     sst.round[my_rank] = 0;
+    sst.put_with_completion();
     sst.sync_with_members();
 
     if(my_rank == server_rank) {
