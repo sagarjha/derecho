@@ -136,6 +136,7 @@ class Worker:
     """
     Train model in mini-batches for @epochs.
     """
+	print("I'm a worker. I'll train.")
     for epoch in range(1, epochs+1):
       for idx, (data, targets) in enumerate(self.train_loader):
         outputs, loss = self.train_iteration(data, targets)
@@ -309,6 +310,8 @@ def main():
       map(lambda x: x.numel(), model.parameters()))
   itemsize = model.parameters().__next__().element_size()
 
+  print("somewhere here 0", flush=True)
+
   # prepare for training
   mapfile, rowlen = launchDerecho(args.derecho_name,
       str(args.num_nodes),
@@ -319,13 +322,17 @@ def main():
       args.model_shm,
       args.grad_shm)
 
+  print("somewhere here 1", flush=True)
   # mapfile = localTestSetup()
   offset = moveModelParametersToSharedMemory(model, mapfile, 0)
+  print("somewhere here 2", flush=True)
   moveGradientsToSharedMemory(model, mapfile, rowlen)
   model_sem.release()
+  print("somewhere here 3", flush=True)
 
   criterion = nn.CrossEntropyLoss()
   optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=1e-4)
+  print("somewhere here 4", flush=True)
 
   worker = Worker(local_id, [(model, optimizer)], criterion, args.my_rank, args.num_nodes)
   worker.init_sem(args.model_sem, args.grad_sem)

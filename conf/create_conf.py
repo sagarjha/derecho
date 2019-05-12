@@ -26,8 +26,8 @@ def update_id_port_domain(cfg_file, i):
     with open(cfg_file, 'w') as f:
         f.writelines(lines)
 
-def update_semaphore_key_and_shared_memory_key(cfg_file, i):
-    semkey_and_shmkey = ['semaphore_key_cpp', 'semaphore_key_py', 'shared_memory_key_to_cpp', 'shared_memory_key_to_py']
+def update_semaphore_and_shared_memory_names(cfg_file, i):
+    semkey_and_shmkey = ['model_sem_name', 'model_shm_name', 'grad_sem_name']
 
     with open(cfg_file, 'r') as f:
         lines = f.readlines()
@@ -38,7 +38,7 @@ def update_semaphore_key_and_shared_memory_key(cfg_file, i):
             continue
         else:
             if words[0] in semkey_and_shmkey:
-                words[-1] = str(int(words[-1]) + 2*i)
+                words[-1] = (words[-1]) + "_" + str(i)
                 lines[idx] = " ".join(words) + '\n'
 
     with open(cfg_file, 'w') as f:
@@ -65,7 +65,7 @@ if __name__ == '__main__':
             print('derecho.cfg Created')
             cfg_file = os.path.join(proc_dir, 'derecho.cfg')
             update_id_port_domain(cfg_file, i)
-            update_semaphore_key_and_shared_memory_key(cfg_file, i)
+            update_semaphore_and_shared_memory_names(cfg_file, i)
         else:
             print('Directory ', dir_name, ' already exists')
 

@@ -93,6 +93,10 @@ def main():
   ITEMSIZE = str(4)
 
   train = None
+  unlink(posix_ipc.unlink_semaphore, MODEL_SEM_NAME)
+  unlink(posix_ipc.unlink_semaphore, GRAD_SEM_NAME)
+  unlink(posix_ipc.unlink_shared_memory, MODEL_SHM_NAME)
+  unlink(posix_ipc.unlink_shared_memory, GRAD_SHM_NAME)
   if args.server:
     #run derecho
     train = subprocess.Popen([DERECHO_NAME,
@@ -102,20 +106,13 @@ def main():
       MODEL_SEM_NAME,
       GRAD_SEM_NAME,
       MODEL_SHM_NAME,
-      GRAD_SHM_NAME],
-      stdout = subprocess.PIPE)
+      GRAD_SHM_NAME])
   else:
-    unlink(posix_ipc.unlink_semaphore, MODEL_SEM_NAME)
-    unlink(posix_ipc.unlink_semaphore, GRAD_SEM_NAME)
-    unlink(posix_ipc.unlink_shared_memory, MODEL_SHM_NAME)
-    unlink(posix_ipc.unlink_shared_memory, GRAD_SHM_NAME)
-
     model_sem = posix_ipc.Semaphore(
         MODEL_SEM_NAME,
         flags = posix_ipc.O_CREAT | posix_ipc.O_EXCL,
         mode = 0o666, 
         initial_value = 1)
-
     grad_sem = posix_ipc.Semaphore(
         GRAD_SEM_NAME,
         flags = posix_ipc.O_CREAT | posix_ipc.O_EXCL,
@@ -133,6 +130,7 @@ def main():
       "--grad-shm "+GRAD_SHM_NAME])],
       shell=True)
 
+  print("waiting now", flush=True)
   train.wait()
 
 
