@@ -132,17 +132,18 @@ int main(int argc, char* argv[]) {
     srand(getpid());
     std::cerr << "Derecho program starting up" << std::endl;
 
-    if(argc < 5) {
-        cout << "Usage: " << argv[0] << " <num_nodes> <num_params> <sem_shk> <sm_shk2cpp> <sm_shk2py>" << endl;
+    if(argc < 6) {
+        cout << "Usage: " << argv[0] << " <num_nodes> <num_params> <sem_shk_cpp> <sem_shk_py> <sm_shk2cpp> <sm_shk2py>" << endl;
         return -1;
     }
 
     // the number of nodes for this test
     const uint32_t num_nodes = std::stoi(argv[1]);
     const uint32_t num_params = std::stoi(argv[2]);
-    const key_t sem_shk = std::stoi(argv[3]);
-    const key_t sm_shk2cpp = std::stoi(argv[4]);
-    const key_t sm_shk2py = std::stoi(argv[5]);
+    const key_t sem_shk_cpp = std::stoi(argv[3]);
+    const key_t sem_shk_py = std::stoi(argv[4]);
+    const key_t sm_shk2cpp = std::stoi(argv[5]);
+    const key_t sm_shk2py = std::stoi(argv[6]);
 
     uint32_t my_id = getConfUInt32(CONF_DERECHO_LOCAL_ID);
 
@@ -173,25 +174,29 @@ int main(int argc, char* argv[]) {
     MLSST sst(members, my_id, num_params);
     uint32_t my_rank = sst.get_local_index();
 
-    int semid = 0;
+    int semidcpp = 0, semidpy = 0;
     //double *sm_ptr = NULL;
     uint32_t server_rank = 0;
     int size = num_params * sizeof(double), offset2py, offset2cpp;
     //char* testp = static_cast<char*>(std::aligned_alloc(4 * 1024, size));
 //    free(testp);
     //offset2py = setshm(testp, size, sm_shk2py, PERMISSION_READONLY);
-    offset2py = setshm(sst.ml_parameters[server_rank], size, sm_shk2py, PERMISSION_READONLY);
+    if (my_rank != server_rank) {
+        offset2py = setshm(sst.ml_parameters[server_rank], size * members.size(), sm_shk2py, PERMISSION_RW);
     
-    offset2cpp = setshm(sst.ml_parameters[my_rank], size, sm_shk2cpp, PERMISSION_RW);
+    //offset2cpp = setshm(sst.ml_parameters[my_rank], size, sm_shk2cpp, PERMISSION_RW);
 //    offset = setshm(sst.ml_parameters[my_rank], size, sm_shk2cpp);
     //sm_ptr = (double*)shmalloc(sizeof(double) * size, shmid, sm_shk);
-    semid = semalloc(sem_shk, 0, PERMISSION);
+    offset2cpp = offset2py + size;
+    semidcpp = semalloc(sem_shk_cpp, 0, PERMISSION);
+    semidpy = semalloc(sem_shk_py, 0, PERMISSION);
     std::cout << offset2cpp << endl;
     std::cerr << offset2cpp << " verify: " << sst.ml_parameters[server_rank][0] << " " << sst.ml_parameters[my_rank][0] << endl;
     std::cout << offset2py << endl;
     std::cerr << offset2py << " verify: " << sst.ml_parameters[server_rank][0] << " " << sst.ml_parameters[my_rank][0] << endl;
     std::cerr << "acquiring semaphore" << endl;
-    semacquire(semid);
+    semacquire(semidcpp);
+    }
 
     // sst initialization
     for(uint param = 0; param < sst.ml_parameters.size(); ++param) {
@@ -247,17 +252,17 @@ int main(int argc, char* argv[]) {
             return sst.round[server_rank] == sst.round[my_rank];
         };
 
-        std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, semid](MLSST& sst) {
+        std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, semidcpp, semidpy](MLSST& sst) {
             //print(sst);
-            std::cerr << "updating new paras " << semid << endl;
+            std::cerr << "updating new paras " << semidcpp << endl;
             for(uint param = 0; param <= 10 && param < sst.ml_parameters.size(); ++param) {
                 std::cerr << sst.ml_parameters[server_rank][param] << " ";
             }
             std::cerr << endl;
             std::cerr << " " << sst.ml_parameters.size() << " " << sst.ml_parameters[server_rank][0] << std::endl;
-            semrelease(semid);
+            semrelease(semidpy);
         std::cerr << "acquiring the lock" <<endl;
-            semacquire(semid);
+            semacquire(semidcpp);
             std::cerr << "reading new paras" << endl;
             for(uint param = 0; param <= 10 && param < sst.ml_parameters.size(); ++param) {
                 std::cerr << sst.ml_parameters[my_rank][param] << " ";
@@ -273,9 +278,9 @@ int main(int argc, char* argv[]) {
         // shared stuff setup
 
         std::cerr << "releasing the lock" << endl;
-        semrelease(semid);
+        semrelease(semidpy);
         std::cerr << "acquiring the lock" <<endl;
-        semacquire(semid);
+        semacquire(semidcpp);
         std::cerr << "loading new paras" << endl;
         for(uint param = 0; param <= 10 && param < sst.ml_parameters.size(); ++param) {
             std::cerr << sst.ml_parameters[my_rank][param] << " ";
