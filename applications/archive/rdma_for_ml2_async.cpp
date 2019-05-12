@@ -112,6 +112,7 @@ int main(int argc, char* argv[]) {
     uint32_t my_rank = sst.get_local_index();
     // initialization
     sst.round[my_rank] = 0;
+    sst.put_with_completion();
     sst.sync_with_members();
 
     uint32_t server_rank = 0;
