@@ -5,6 +5,7 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <cstring>
 #include <semaphore.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -15,6 +16,8 @@
 #include "initialize.h"
 #include "sst/poll_utils.h"
 #include "sst/sst.h"
+
+#include "three_way_buffer.h"
 
 #include <sys/ipc.h>
 #include <sys/sem.h>
@@ -31,10 +34,11 @@ public:
     MLSST(const std::vector<uint32_t>& members, uint32_t my_id, uint32_t dimension)
             : SST<MLSST>(this, SSTParams{members, my_id}),
               ml_models(dimension) {
-        SSTInit(ml_models, round);
+        SSTInit(ml_models, round, read_num);
     }
     SSTFieldVector<double> ml_models;
     SSTField<uint64_t> round;
+	SSTField<uint32_t> read_num;
 };
 
 void print(const MLSST& sst) {
@@ -45,6 +49,8 @@ void print(const MLSST& sst) {
         cout << endl;
 
         cout << sst.round[row] << endl;
+
+        cout << sst.read_num[row] << endl;
     }
     cout << endl;
 }
@@ -111,6 +117,7 @@ int main(int argc, char* argv[]) {
     uint32_t my_rank = sst.get_local_index();
     // initialization
     sst.round[my_rank] = 0;
+	sst.read_num[my_rank] = 0;
     sst.put_with_completion();
     sst.sync_with_members();
 
@@ -118,7 +125,16 @@ int main(int argc, char* argv[]) {
     int size = num_params;
     double alpha = 0.05;
 
+
+	// three way buffer initialization
+	size_t buffer_size = sizeof(sst.ml_models[0][0]) * num_params;
+	std::shared_ptr<MLSST> sst_p(&sst);
+
+	std::unique_ptr<ThreeWayBufferForServer<MLSST> > twbs;
+	std::unique_ptr<ThreeWayBufferForWorker<MLSST> >twbw;
+
     if(my_rank == server_rank) {
+		twbs = std::make_unique<ThreeWayBufferForServer<MLSST> >(my_id, members, buffer_size, sst_p);
         std::cout << "I'm a server" << std::endl;
         for(uint row = 0; row < num_nodes; ++row) {
             if(row == my_rank) {
@@ -135,13 +151,15 @@ int main(int argc, char* argv[]) {
                 return false;
             };
 
-            std::function<void(MLSST&)> update_parameter = [row, my_rank, alpha](MLSST& sst) {
+            std::function<void(MLSST&)> update_parameter = [row, my_rank, alpha, &twbs](MLSST& sst) {
+				double *buf = (double*)twbs->getbuf();
                 for(uint param = 0; param < sst.ml_models.size(); ++param) {
                     //XXX: update gradient, - gradients?
-                    sst.ml_models[my_rank][param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];
+                    buf[param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];
                 }
                 // push the model
-                sst.put_with_completion((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[0][0]) * sst.ml_models.size());
+				twbs->write();
+                //sst.put_with_completion((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[0][0]) * sst.ml_models.size());
                 std::cerr << "pushed models to clients" << endl;
             };
 
@@ -152,6 +170,7 @@ int main(int argc, char* argv[]) {
 		 * worker
 		 */
         // wait until python objects are moved to shared memory region.
+		twbw = std::make_unique<ThreeWayBufferForWorker<MLSST> >(my_id, server_id, buffer_size, sst_p);
         sem_wait(model_sem);
         sem_post(model_sem);
         std::cerr << "I'm a worker" << endl;
@@ -160,8 +179,14 @@ int main(int argc, char* argv[]) {
             return true;
         };
 
-        std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, grad_sem](MLSST& sst) {
+        std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, grad_sem, &twbw](MLSST& sst) {
             //std::cerr << "updating new parameter " << endl;
+
+			//TODO: copy from TWB to the server row
+			const char *src = twbw->read();
+			char *tar = (char*)std::addressof(sst.ml_models[server_rank][0]);
+			memcpy(tar, src, sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
+
             sem_post(grad_sem);
             //std::cerr << "Python turn" << endl;
             sem_wait(grad_sem);

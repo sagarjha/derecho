@@ -12,11 +12,16 @@
 #include "sst/poll_utils.h"
 #include "sst/sst.h"
 #include "initialize.h"
-#include "three_way_buffer_impl.h"
+#include "three_way_buffer.h"
 
 using namespace derecho;
 using namespace sst;
 using namespace std;
+
+// TODO: Temporary Solution
+namespace sst {
+	char* MSHM;
+}
 
 class TWBSST : public SST<TWBSST> {
 public:
@@ -45,6 +50,9 @@ void print(const TWBSST& sst) {
 }
 
 int main(int argc, char* argv[]) {
+	//TODO
+	MSHM = "some string";
+
     srand(getpid());
 
     if(argc < 3) {

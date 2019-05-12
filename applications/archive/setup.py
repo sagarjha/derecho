@@ -34,6 +34,14 @@ def parseArgs():
       '--num-nodes', 
       type=str, 
       default="2")
+  parser.add_argument(
+      '--python-path', 
+      type=str, 
+      default="train.py")
+  parser.add_argument(
+      '--derecho-path', 
+      type=str, 
+      default="rdma_for_ml2_async")
   return parser.parse_args()
 
 
@@ -73,9 +81,12 @@ def main():
   args = parseArgs()
   my_rank, model_sem, grad_sem, model_shm = read_derecho_cfg()
   MY_RANK = my_rank
+  MODEL_SEM_NAME = model_sem
+  GRAD_SEM_NAME = grad_sem
+  MODEL_SHM_NAME = model_shm
 
-  TRAINING_NN_NAME = "python ./train.py"
-  DERECHO_NAME = "./rdma_for_ml2_async"
+  TRAINING_NN_NAME = "python3 " + args.python_path
+  DERECHO_NAME = args.derecho_path
 
   NUM_NODE = args.num_nodes
   NUM_PARAM = str(784*10)
@@ -126,6 +137,5 @@ def main():
 
 
 if __name__ == "__main__":
-  print(read_derecho_cfg())
-  #main()
+  main()
 

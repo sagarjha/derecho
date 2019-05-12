@@ -51,3 +51,5 @@ public:
 							std::shared_ptr<SSTType> sst);
     const char* read() const;
 };
+
+#include "three_way_buffer_impl.h"
