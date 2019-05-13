@@ -1,11 +1,11 @@
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <fcntl.h>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
-#include <cstring>
 #include <semaphore.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -38,7 +38,7 @@ public:
     }
     SSTFieldVector<float> ml_models;
     SSTField<uint64_t> round;
-	SSTField<uint32_t> read_num;
+    SSTField<uint32_t> read_num;
 };
 
 void print(const MLSST& sst) {
@@ -117,23 +117,22 @@ int main(int argc, char* argv[]) {
     uint32_t my_rank = sst.get_local_index();
     // initialization
     sst.round[my_rank] = 0;
-	sst.read_num[my_rank] = 0;
+    sst.read_num[my_rank] = 0;
     sst.put_with_completion();
     sst.sync_with_members();
 
     uint32_t server_rank = 0;
     double alpha = 0.05;
 
+    // three way buffer initialization
+    size_t buffer_size = sizeof(sst.ml_models[0][0]) * num_params;
+    std::shared_ptr<MLSST> sst_p(&sst);
 
-	// three way buffer initialization
-	size_t buffer_size = sizeof(sst.ml_models[0][0]) * num_params;
-	std::shared_ptr<MLSST> sst_p(&sst);
-
-	std::unique_ptr<ThreeWayBufferForServer<MLSST> > twbs;
-	std::unique_ptr<ThreeWayBufferForWorker<MLSST> >twbw;
+    std::unique_ptr<ThreeWayBufferForServer<MLSST>> twbs;
+    std::unique_ptr<ThreeWayBufferForWorker<MLSST>> twbw;
 
     if(my_rank == server_rank) {
-		twbs = std::make_unique<ThreeWayBufferForServer<MLSST> >(my_id, members, buffer_size, sst_p);
+        twbs = std::make_unique<ThreeWayBufferForServer<MLSST>>(my_id, members, buffer_size, sst_p);
         std::cout << "I'm a server" << std::endl;
         for(uint row = 0; row < num_nodes; ++row) {
             if(row == my_rank) {
@@ -151,13 +150,13 @@ int main(int argc, char* argv[]) {
             };
 
             std::function<void(MLSST&)> update_parameter = [row, my_rank, alpha, &twbs](MLSST& sst) {
-				float *buf = (float*)twbs->getbuf();
+                float* buf = (float*)twbs->getbuf();
                 for(uint param = 0; param < sst.ml_models.size(); ++param) {
                     //XXX: update gradient, - gradients?
                     buf[param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];
                 }
                 // push the model
-				twbs->write();
+                twbs->write();
                 //sst.put_with_completion((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[0][0]) * sst.ml_models.size());
                 std::cerr << "pushed models to clients" << endl;
             };
@@ -169,7 +168,7 @@ int main(int argc, char* argv[]) {
 		 * worker
 		 */
         // wait until python objects are moved to shared memory region.
-		twbw = std::make_unique<ThreeWayBufferForWorker<MLSST> >(my_id, server_id, buffer_size, sst_p);
+        twbw = std::make_unique<ThreeWayBufferForWorker<MLSST>>(my_id, server_id, buffer_size, sst_p);
         sem_wait(model_sem);
         sem_post(model_sem);
         std::cerr << "I'm a worker" << endl;
@@ -181,10 +180,10 @@ int main(int argc, char* argv[]) {
         std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, grad_sem, &twbw](MLSST& sst) {
             //std::cerr << "updating new parameter " << endl;
 
-			//TODO: copy from TWB to the server row
-			const char *src = twbw->read();
-			char *tar = (char*)std::addressof(sst.ml_models[server_rank][0]);
-			memcpy(tar, src, sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
+            //TODO: copy from TWB to the server row
+            const char* src = twbw->read();
+            char* tar = (char*)std::addressof(sst.ml_models[server_rank][0]);
+            memcpy(tar, src, sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
 
             sem_post(grad_sem);
             //std::cerr << "Python turn" << endl;
@@ -192,7 +191,7 @@ int main(int argc, char* argv[]) {
 
             // push the gradient
             // the reason to -sst.getBaseAddress() is that here we need an offset from base.
-            sst.put_with_completion((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
+            sst.put((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
             sst.round[my_rank]++;
             // push the round number - only after the gradient has been pushed
             sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[my_rank]));
