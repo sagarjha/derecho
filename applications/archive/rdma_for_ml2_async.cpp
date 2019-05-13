@@ -36,7 +36,7 @@ public:
               ml_models(dimension) {
         SSTInit(ml_models, round, read_num);
     }
-    SSTFieldVector<double> ml_models;
+    SSTFieldVector<float> ml_models;
     SSTField<uint64_t> round;
 	SSTField<uint32_t> read_num;
 };
@@ -76,11 +76,11 @@ int main(int argc, char* argv[]) {
     // the number of nodes for this test
     const uint32_t num_nodes = std::stoi(argv[1]);
     const uint32_t num_params = std::stoi(argv[2]);
-    const uint32_t itemsize = std::stoi(argv[3]);
+    // const uint32_t itemsize = std::stoi(argv[3]);
     const char* MSEM = argv[4];
     const char* GSEM = argv[5];
     sst::MSHM = argv[6];
-    const char* GSHM = argv[7];
+    // const char* GSHM = argv[7];
 
     //std::cout << sst::MSHM << std::endl;
 
@@ -122,7 +122,6 @@ int main(int argc, char* argv[]) {
     sst.sync_with_members();
 
     uint32_t server_rank = 0;
-    int size = num_params;
     double alpha = 0.05;
 
 
@@ -152,7 +151,7 @@ int main(int argc, char* argv[]) {
             };
 
             std::function<void(MLSST&)> update_parameter = [row, my_rank, alpha, &twbs](MLSST& sst) {
-				double *buf = (double*)twbs->getbuf();
+				float *buf = (float*)twbs->getbuf();
                 for(uint param = 0; param < sst.ml_models.size(); ++param) {
                     //XXX: update gradient, - gradients?
                     buf[param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];

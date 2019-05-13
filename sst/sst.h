@@ -182,8 +182,7 @@ private:
 		int fd = shm_open(MSHM, O_CREAT | O_EXCL | O_RDWR, 0666);
 		char *p = NULL;
 		std::cout << "length:" << len << " fd: " << fd << std::endl;
-		if (fd >= 0) {
-			ftruncate(fd, len);
+		if (fd >= 0 && ftruncate(fd, len) == 0) {
 			p = (char *)mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 		} else {
 			p = new char[len];
