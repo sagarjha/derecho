@@ -82,30 +82,30 @@ ThreeWayBufferForWorker<SSTType>::ThreeWayBufferForWorker(uint32_t my_id, uint32
           buf_size(buf_size),
           buf_seq_size(sizeof(uint32_t) + buf_size),
           sst(sst) {
-	buffer0 = create_shared_memory(MSHM_BUF_0, buf_seq_size);
-	buffer1 = create_shared_memory(MSHM_BUF_1, buf_seq_size);
-	buffer2 = create_shared_memory(MSHM_BUF_2, buf_seq_size);
-    res0 = std::make_unique<resources>(server_id, const_cast<char*>(buffer0.get()), const_cast<char*>(buffer0.get()), buf_seq_size, buf_seq_size, my_id == server_id);
-    res1 = std::make_unique<resources>(server_id, const_cast<char*>(buffer1.get()), const_cast<char*>(buffer1.get()), buf_seq_size, buf_seq_size, my_id == server_id);
-    res2 = std::make_unique<resources>(server_id, const_cast<char*>(buffer2.get()), const_cast<char*>(buffer2.get()), buf_seq_size, buf_seq_size, my_id == server_id);
+    buffer0 = create_shared_memory(MSHM_BUF_0, buf_seq_size);
+    buffer1 = create_shared_memory(MSHM_BUF_1, buf_seq_size);
+    buffer2 = create_shared_memory(MSHM_BUF_2, buf_seq_size);
+    res0 = std::make_unique<resources>(server_id, buffer0, buffer0, buf_seq_size, buf_seq_size, my_id == server_id);
+    res1 = std::make_unique<resources>(server_id, buffer1, buffer1, buf_seq_size, buf_seq_size, my_id == server_id);
+    res2 = std::make_unique<resources>(server_id, buffer2, buffer2, buf_seq_size, buf_seq_size, my_id == server_id);
 }
 
 template <typename SSTType>
 const char* ThreeWayBufferForWorker<SSTType>::read() const {
     uint32_t seq_nums[3] = {
-            ((volatile BufferWithSeq*)(buffer0.get()))->seq,
-            ((volatile BufferWithSeq*)(buffer1.get()))->seq,
-            ((volatile BufferWithSeq*)(buffer2.get()))->seq};
+            ((volatile BufferWithSeq*)(buffer0))->seq,
+            ((volatile BufferWithSeq*)(buffer1))->seq,
+            ((volatile BufferWithSeq*)(buffer2))->seq};
     int buffer_id = std::max_element(seq_nums, seq_nums + 3) - seq_nums;
     sst->read_num[my_id] = buffer_id;
     sst->put_with_completion((char*)std::addressof(sst->read_num[0]) - sst->getBaseAddress(), sizeof(sst->read_num[0]));
     const char* buf = NULL;
     if(buffer_id == 0) {
-        buf = (const char*)(((volatile BufferWithSeq*)(buffer0.get()))->buf);
+        buf = (const char*)(((volatile BufferWithSeq*)(buffer0))->buf);
     } else if(buffer_id == 1) {
-        buf = (const char*)(((volatile BufferWithSeq*)(buffer1.get()))->buf);
+        buf = (const char*)(((volatile BufferWithSeq*)(buffer1))->buf);
     } else if(buffer_id == 2) {
-        buf = (const char*)(((volatile BufferWithSeq*)(buffer2.get()))->buf);
+        buf = (const char*)(((volatile BufferWithSeq*)(buffer2))->buf);
     }
     return buf;
 }

@@ -59,13 +59,6 @@ inline sem_t* sem_init(const char* name) {
     return sem_open(name, 0);
 }
 
-namespace sst {
-	char* MSHM;
-	char* MSHM_BUF_0;
-	char* MSHM_BUF_1;
-	char* MSHM_BUF_2;
-}
-
 int main(int argc, char* argv[]) {
     ios_base::sync_with_stdio(false);
     srand(getpid());
@@ -84,9 +77,9 @@ int main(int argc, char* argv[]) {
     const char* GSEM = argv[5];
 	MSHM = argv[6];
 	std::string msem(MSEM);
-	MSHM_BUF_0 = (msem + "_BUF_0").c_str();
-	MSHM_BUF_1 = (msem + "_BUF_1").c_str();
-	MSHM_BUF_2 = (msem + "_BUF_2").c_str();
+	MSHM_BUF_0 = (char*)(msem + "_BUF_0").c_str();
+	MSHM_BUF_1 = (char*)(msem + "_BUF_1").c_str();
+	MSHM_BUF_2 = (char*)(msem + "_BUF_2").c_str();
     // const char* GSHM = argv[7];
 
     //std::cout << sst::MSHM << std::endl;

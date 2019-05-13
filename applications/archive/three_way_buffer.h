@@ -42,7 +42,9 @@ template <typename SSTType>
 class ThreeWayBufferForWorker {
     uint32_t my_id, server_id;
     size_t buf_size, buf_seq_size;
-    char * buffer0, buffer1, buffer2;
+    char* buffer0;
+    char* buffer1;
+    char* buffer2;
     std::unique_ptr<resources> res0, res1, res2;
     std::shared_ptr<SSTType> sst;
 

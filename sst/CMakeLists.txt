@@ -13,8 +13,7 @@ include_directories(${derecho_SOURCE_DIR}/third_party/libfabric/include)
 link_directories(${derecho_SOURCE_DIR}/third_party/libfabric/src/.libs)
 
 
-# ADD_LIBRARY(sst SHARED verbs.cpp lf.cpp poll_utils.cpp ../derecho/connection_manager.cpp)
-ADD_LIBRARY(sst SHARED lf.cpp poll_utils.cpp ../derecho/connection_manager.cpp)
+ADD_LIBRARY(sst SHARED lf.cpp poll_utils.cpp sst.cpp ../derecho/connection_manager.cpp)
 TARGET_LINK_LIBRARIES(sst conf tcp rdmacm fabric ibverbs pthread rt utils) 
 add_dependencies(sst libfabric_target conf utils)
 

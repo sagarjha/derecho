@@ -18,21 +18,26 @@
 
 #include "predicates.h"
 
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <fcntl.h>
 #include <unistd.h>
 
 #ifdef USE_VERBS_API
-  #include "verbs.h"
-#else//LIBFABRIC
-  #include "lf.h"
+#include "verbs.h"
+#else  //LIBFABRIC
+#include "lf.h"
 #endif
 
 using sst::resources;
 
 namespace sst {
+
+static char* MSHM;
+static char* MSHM_BUF_0;
+static char* MSHM_BUF_1;
+static char* MSHM_BUF_2;
 
 const int alignTo = sizeof(long);
 
@@ -161,20 +166,7 @@ struct SSTParams {
               start_predicate_thread(start_predicate_thread) {}
 };
 
-namespace sst {
-	char *create_shared_memory(char *name, size_t len)
-	{
-		int fd = shm_open(name, O_CREAT | O_EXCL | O_RDWR, 0666);
-		char *p = NULL;
-		std::cout << "length:" << len << " fd: " << fd << std::endl;
-		if (fd >= 0 && ftruncate(fd, len) == 0) {
-			p = (char *)mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-		} else {
-			p = new char[len];
-		}
-		return p;
-	}
-}
+char* create_shared_memory(char* name, size_t len);
 
 template <class DerivedSST>
 class SST {
@@ -190,12 +182,9 @@ private:
         set_bases_and_rowLens(base, rowLen, fields...);
     }
 
-	char *sharedRows(size_t len)
-	{
-		extern char* MSHM;
-		return create_shared_memory(MSHM, len);
-	}
-
+    char* sharedRows(size_t len) {
+        return create_shared_memory(MSHM, len);
+    }
 
     DerivedSST* derived_this;
 
@@ -308,9 +297,9 @@ public:
 #ifdef USE_VERBS_API
                 res_vec[sst_index] = std::make_unique<resources>(
                         node_rank, write_addr, read_addr, rowLen, rowLen);
-#else // use libfabric api by default
+#else  // use libfabric api by default
                 res_vec[sst_index] = std::make_unique<resources>(
-                        node_rank, write_addr, read_addr, rowLen, rowLen, (my_node_id<node_rank));
+                        node_rank, write_addr, read_addr, rowLen, rowLen, (my_node_id < node_rank));
 #endif
                 // update qp_num_to_index
                 // qp_num_to_index[res_vec[sst_index].get()->qp->qp_num] = sst_index;
