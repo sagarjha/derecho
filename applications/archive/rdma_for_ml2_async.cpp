@@ -59,8 +59,11 @@ inline sem_t* sem_init(const char* name) {
     return sem_open(name, 0);
 }
 
-namespace sst {
-char* MSHM;
+namespace rdma_for_ml {
+	char* MSHM;
+	char* MSHM_BUF_0;
+	char* MSHM_BUF_1;
+	char* MSHM_BUF_2;
 }
 
 int main(int argc, char* argv[]) {
@@ -79,7 +82,11 @@ int main(int argc, char* argv[]) {
     // const uint32_t itemsize = std::stoi(argv[3]);
     const char* MSEM = argv[4];
     const char* GSEM = argv[5];
-    sst::MSHM = argv[6];
+    rdma_for_ml::MSHM = argv[6];
+	std::string msem(MSEM);
+	rdma_for_ml::MSHM_BUF_0 = (msem + "_BUF_0").c_str();
+	rdma_for_ml::MSHM_BUF_1 = (msem + "_BUF_1").c_str();
+	rdma_for_ml::MSHM_BUF_2 = (msem + "_BUF_2").c_str();
     // const char* GSHM = argv[7];
 
     //std::cout << sst::MSHM << std::endl;
@@ -153,7 +160,7 @@ int main(int argc, char* argv[]) {
                 float* buf = (float*)twbs->getbuf();
                 for(uint param = 0; param < sst.ml_models.size(); ++param) {
                     //XXX: update gradient, - gradients?
-                    buf[param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];
+                   buf[param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];
                 }
                 // push the model
                 twbs->write();
@@ -182,8 +189,8 @@ int main(int argc, char* argv[]) {
 
             //TODO: copy from TWB to the server row
             const char* src = twbw->read();
-            char* tar = (char*)std::addressof(sst.ml_models[server_rank][0]);
-            memcpy(tar, src, sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
+            // char* tar = (char*)std::addressof(sst.ml_models[server_rank][0]);
+            // memcpy(tar, src, sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
 
             sem_post(grad_sem);
             //std::cerr << "Python turn" << endl;

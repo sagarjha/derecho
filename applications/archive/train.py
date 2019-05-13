@@ -22,7 +22,7 @@ class Net(nn.Module):
 class Worker:
 
   # init training and load dataset
-  def __init__(self, model_optimizer_pairs, criterion, my_rank, num_workers):
+  def __init__(self, model_optimizer_pairs, criterion, my_rank, num_workers, buf_num):
     """
     Loading dataset and init model.
     Parameters:
@@ -34,6 +34,7 @@ class Worker:
     self.criterion = criterion
     self.train_loader = self.load_dataset()
     self.config = self.load_config()
+    self.buf_num = buf_num
 
 
   def load_dataset(self):
@@ -87,7 +88,9 @@ class Worker:
     Depends on different implementation, this method should be overrided.
     Currently, we can use a shared memory to tell which model to use.
     """
-    return (self.model_optimizer_pairs[0])
+    buf_num = self.buf_num.item()
+    assert(buf_num >= 0 buf_num < 3)
+    return self.model_optimizer_pairs[buf_num]
 
 
   def train_iteration(self, data, targets):
@@ -207,6 +210,17 @@ def moveGradientsToSharedMemory(model, mapfile, offset=0):
     offset += param.grad.numpy().nbytes
   return offset
 
+def shareModelGradients(src_model, models):
+  """
+  Make models in @models have the same gradient memory locatoin with @src_model
+  """
+  params = list(src_model.parameters())
+  for model in models:
+    _params = list(model.parameters())
+    assert(len(params) == len(_params))
+    for i in range(len(params)):
+      _params[i].grad = params[i].grad
+
 
 def launchDerecho(name, num_nodes, num_params, itemsize, model_sem, grad_sem, model_shm,
     grad_shm):
@@ -220,20 +234,45 @@ def launchDerecho(name, num_nodes, num_params, itemsize, model_sem, grad_sem, mo
     model_shm,
     grad_shm])
 
+  bufs = []
+  buf_names = [model_shm * 3]
+
+  for idx, n in enumerate(buf_names):
+    buf_names[idx] = n + "_BUF_" + str(idx)
+
+  # we first map SST table
+  mapfile, size = waitingSharedMemory(model_shm)
+
+  # map all buffers
+  for name in buf_names:
+    bufs.append(waitingSharedMemory(name))
+
+  return mapfile, size//2, bufs
+
+
+def waitingSharedMemory(name):
+  """
+  Waiting a shared memory with given @name avaliable, then map the whole shared
+  memory into current process's address space by mmap.
+  Parameters:
+    @name: a string identifier for posix shared memory.
+  @returns a tuple mapfile and size of the mapped file.
+  """
   mem_initilized = False
   shm = None
   while not mem_initilized or (shm != None and shm.size == 0):
     if shm is not None:
       shm.close_fd()
     try:
-      shm = posix_ipc.SharedMemory(model_shm, mode=0o666)
+      shm = posix_ipc.SharedMemory(name, mode=0o666)
       mem_initilized = True
     except:
       pass
   mapfile = mmap.mmap(shm.fd, shm.size)
   size = shm.size
   shm.close_fd()
-  return mapfile, size//2
+  return (mapfile, size)
+
 
 def localTestSetup():
   shm = posix_ipc.SharedMemory(
@@ -301,14 +340,16 @@ def main():
   model_sem = posix_ipc.Semaphore(args.model_sem)
   model_sem.acquire()
 
-  model = nn.Linear(784, 10, bias=False)
+  model0 = nn.Linear(784, 10, bias=False)
+  model1 = nn.Linear(784, 10, bias=False)
+  model2 = nn.Linear(784, 10, bias=False)
 
   num_params = reduce(lambda a, x: a + x,
       map(lambda x: x.numel(), model.parameters()))
   itemsize = model.parameters().__next__().element_size()
 
   # prepare for training
-  mapfile, rowlen = launchDerecho(args.derecho_name,
+  mapfile, rowlen, bufs = launchDerecho(args.derecho_name,
       str(args.num_nodes),
       str(num_params),
       str(itemsize),
@@ -318,14 +359,27 @@ def main():
       args.grad_shm)
 
   # mapfile = localTestSetup()
-  offset = moveModelParametersToSharedMemory(model, mapfile, 0)
-  moveGradientsToSharedMemory(model, mapfile, rowlen)
+  moveModelParametersToSharedMemory(model0, bufs[0][0], 0)
+  moveModelParametersToSharedMemory(model1, bufs[1][0], 0)
+  moveModelParametersToSharedMemory(model2, bufs[2][0], 0)
+
+  moveGradientsToSharedMemory(model0, mapfile, rowlen)
+  shareModelGradients(model0, [model1, model2])
+  buf_num = createTensorInSharedMemory((1,), np.uint32, mapfile, rowlen*2-4)
+
   model_sem.release()
 
   criterion = nn.CrossEntropyLoss()
-  optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=1e-4)
+  optimizer0 = torch.optim.SGD(model0.parameters(), lr=0.1, weight_decay=1e-4)
+  optimizer1 = torch.optim.SGD(model1.parameters(), lr=0.1, weight_decay=1e-4)
+  optimizer2 = torch.optim.SGD(model2.parameters(), lr=0.1, weight_decay=1e-4)
 
-  worker = Worker([(model, optimizer)], criterion, args.my_rank, args.num_nodes - 1)
+  worker = Worker(
+      [(model0, optimizer0), (model1, optimizer1), (model2, optimizer2)], 
+      criterion, 
+      args.my_rank,
+      args.num_nodes - 1,
+      buf_num)
   worker.init_sem(args.model_sem, args.grad_sem)
   worker.train()
 
