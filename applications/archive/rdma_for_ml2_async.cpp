@@ -82,11 +82,11 @@ int main(int argc, char* argv[]) {
     // const uint32_t itemsize = std::stoi(argv[3]);
     const char* MSEM = argv[4];
     const char* GSEM = argv[5];
-	sst::MSHM = argv[6];
+	MSHM = argv[6];
 	std::string msem(MSEM);
-	sst::MSHM_BUF_0 = (msem + "_BUF_0").c_str();
-	sst::MSHM_BUF_1 = (msem + "_BUF_1").c_str();
-	sst::MSHM_BUF_2 = (msem + "_BUF_2").c_str();
+	MSHM_BUF_0 = (msem + "_BUF_0").c_str();
+	MSHM_BUF_1 = (msem + "_BUF_1").c_str();
+	MSHM_BUF_2 = (msem + "_BUF_2").c_str();
     // const char* GSHM = argv[7];
 
     //std::cout << sst::MSHM << std::endl;
