@@ -22,18 +22,18 @@ class Net(nn.Module):
 class Worker:
 
   # init training and load dataset
-  def __init__(self, local_id, model_optimizer_pairs, criterion, my_rank, world_size):
+  def __init__(self, model_optimizer_pairs, criterion, my_rank, num_workers):
     """
     Loading dataset and init model.
     Parameters:
       @model_optimizer_pairs: a list of tuples that contains (model, optimizer)
     """
+    self.rank = my_rank
+    self.num_workers = num_workers
     self.model_optimizer_pairs = model_optimizer_pairs
     self.criterion = criterion
     self.train_loader = self.load_dataset()
     self.config = self.load_config()
-    self.rank = my_rank
-    self.world_size = world_size
 
 
   def load_dataset(self):
@@ -49,20 +49,18 @@ class Worker:
           transforms.ToTensor()
           ]),
         download=True)
-    """
-    test_dataset = torchvision.datasets.MNIST(
-        root='../data',
-        train=False,
-        transform=transforms.Compose([
-          transforms.ToTensor()
-          ])
-        )
-    """
-    data_split_size = len(train_dataset) // self.world_size
-    local_data = torch.utils.data.random_split(train_dataset, [data_split_size for i in range(self.world_size)])
+    #test_dataset = torchvision.datasets.MNIST(
+    #    root='../data',
+    #    train=False,
+    #    transform=transforms.Compose([
+    #      transforms.ToTensor()
+    #      ])
+    #    )
+    data_split_size = len(train_dataset) // self.num_workers
+    local_data = torch.utils.data.random_split(train_dataset, [data_split_size for i in range(self.num_workers)])
 
     return torch.utils.data.DataLoader(
-        dataset=local_data[self.rank],
+        dataset=local_data[self.rank-1],
         batch_size=128,
         shuffle=True)
 
@@ -136,7 +134,6 @@ class Worker:
     """
     Train model in mini-batches for @epochs.
     """
-	print("I'm a worker. I'll train.")
     for epoch in range(1, epochs+1):
       for idx, (data, targets) in enumerate(self.train_loader):
         outputs, loss = self.train_iteration(data, targets)
@@ -310,8 +307,6 @@ def main():
       map(lambda x: x.numel(), model.parameters()))
   itemsize = model.parameters().__next__().element_size()
 
-  print("somewhere here 0", flush=True)
-
   # prepare for training
   mapfile, rowlen = launchDerecho(args.derecho_name,
       str(args.num_nodes),
@@ -322,19 +317,15 @@ def main():
       args.model_shm,
       args.grad_shm)
 
-  print("somewhere here 1", flush=True)
   # mapfile = localTestSetup()
   offset = moveModelParametersToSharedMemory(model, mapfile, 0)
-  print("somewhere here 2", flush=True)
   moveGradientsToSharedMemory(model, mapfile, rowlen)
   model_sem.release()
-  print("somewhere here 3", flush=True)
 
   criterion = nn.CrossEntropyLoss()
   optimizer = torch.optim.SGD(model.parameters(), lr=0.1, weight_decay=1e-4)
-  print("somewhere here 4", flush=True)
 
-  worker = Worker(local_id, [(model, optimizer)], criterion, args.my_rank, args.num_nodes)
+  worker = Worker([(model, optimizer)], criterion, args.my_rank, args.num_nodes - 1)
   worker.init_sem(args.model_sem, args.grad_sem)
   worker.train()
 
