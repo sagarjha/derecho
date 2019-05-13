@@ -59,7 +59,7 @@ inline sem_t* sem_init(const char* name) {
     return sem_open(name, 0);
 }
 
-namespace rdma_for_ml {
+namespace sst {
 	char* MSHM;
 	char* MSHM_BUF_0;
 	char* MSHM_BUF_1;
@@ -82,11 +82,11 @@ int main(int argc, char* argv[]) {
     // const uint32_t itemsize = std::stoi(argv[3]);
     const char* MSEM = argv[4];
     const char* GSEM = argv[5];
-    rdma_for_ml::MSHM = argv[6];
+	sst::MSHM = argv[6];
 	std::string msem(MSEM);
-	rdma_for_ml::MSHM_BUF_0 = (msem + "_BUF_0").c_str();
-	rdma_for_ml::MSHM_BUF_1 = (msem + "_BUF_1").c_str();
-	rdma_for_ml::MSHM_BUF_2 = (msem + "_BUF_2").c_str();
+	sst::MSHM_BUF_0 = (msem + "_BUF_0").c_str();
+	sst::MSHM_BUF_1 = (msem + "_BUF_1").c_str();
+	sst::MSHM_BUF_2 = (msem + "_BUF_2").c_str();
     // const char* GSHM = argv[7];
 
     //std::cout << sst::MSHM << std::endl;

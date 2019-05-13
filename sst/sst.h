@@ -161,7 +161,7 @@ struct SSTParams {
               start_predicate_thread(start_predicate_thread) {}
 };
 
-namespace rdma_for_ml {
+namespace sst {
 	char *create_shared_memory(char *name, size_t len)
 	{
 		int fd = shm_open(name, O_CREAT | O_EXCL | O_RDWR, 0666);
@@ -192,8 +192,8 @@ private:
 
 	char *sharedRows(size_t len)
 	{
-		extern "rdma_for_ml" char* MSHM;
-		return rdma_for_ml::create_shared_memory(rdma_for_ml::MSHM, len);
+		extern char* MSHM;
+		return create_shared_memory(MSHM, len);
 	}
 
 

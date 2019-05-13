@@ -82,12 +82,9 @@ ThreeWayBufferForWorker<SSTType>::ThreeWayBufferForWorker(uint32_t my_id, uint32
           buf_size(buf_size),
           buf_seq_size(sizeof(uint32_t) + buf_size),
           sst(sst) {
-	extern "rdma_for_ml" char* MSHM_BUF_0;
-	extern "rdma_for_ml" char* MSHM_BUF_1;
-	extern "rdma_for_ml" char* MSHM_BUF_2;
-	buffer0 = rdma_fo_ml::create_shared_memory(MSHM_BUF_0, buf_seq_size);
-	buffer1 = rdma_fo_ml::create_shared_memory(MSHM_BUF_1, buf_seq_size);
-	buffer2 = rdma_fo_ml::create_shared_memory(MSHM_BUF_2, buf_seq_size);
+	buffer0 = sst::create_shared_memory(sst::MSHM_BUF_0, buf_seq_size);
+	buffer1 = sst::create_shared_memory(sst::MSHM_BUF_1, buf_seq_size);
+	buffer2 = sst::create_shared_memory(sst::MSHM_BUF_2, buf_seq_size);
     res0 = std::make_unique<resources>(server_id, const_cast<char*>(buffer0.get()), const_cast<char*>(buffer0.get()), buf_seq_size, buf_seq_size, my_id == server_id);
     res1 = std::make_unique<resources>(server_id, const_cast<char*>(buffer1.get()), const_cast<char*>(buffer1.get()), buf_seq_size, buf_seq_size, my_id == server_id);
     res2 = std::make_unique<resources>(server_id, const_cast<char*>(buffer2.get()), const_cast<char*>(buffer2.get()), buf_seq_size, buf_seq_size, my_id == server_id);
