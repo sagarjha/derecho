@@ -69,7 +69,7 @@ void ThreeWayBufferForServer<SSTType>::write() {
             buf = &res_vec2[worker_index];
             seq_vec2[worker_index] = nseq;
         }
-        std::cout << "TWB.write() " << buf_seq_size << std::endl;
+        // std::cout << "TWB.write() " << buf_seq_size << std::endl;
         (*buf)->post_remote_write(buf_seq_size);
     }
 }
@@ -81,13 +81,17 @@ ThreeWayBufferForWorker<SSTType>::ThreeWayBufferForWorker(uint32_t my_id, uint32
           server_id(server_id),
           buf_size(buf_size),
           buf_seq_size(sizeof(uint32_t) + buf_size),
-          sst(sst) {
-    buffer0 = create_shared_memory(MSHM_BUF_0, buf_seq_size);
-    buffer1 = create_shared_memory(MSHM_BUF_1, buf_seq_size);
-    buffer2 = create_shared_memory(MSHM_BUF_2, buf_seq_size);
-    res0 = std::make_unique<resources>(server_id, buffer0, buffer0, buf_seq_size, buf_seq_size, my_id == server_id);
-    res1 = std::make_unique<resources>(server_id, buffer1, buffer1, buf_seq_size, buf_seq_size, my_id == server_id);
-    res2 = std::make_unique<resources>(server_id, buffer2, buffer2, buf_seq_size, buf_seq_size, my_id == server_id);
+          sst(sst) {}
+
+template <typename SSTType>
+void ThreeWayBufferForWorker<SSTType>::initBuffer(char *buf0, char *buf1, char *buf2) {
+			  buffer0 = (volatile char*)create_shared_memory(buf0, buf_seq_size);
+			  buffer1 = (volatile char*)create_shared_memory(buf1, buf_seq_size);
+			  buffer2 = (volatile char*)create_shared_memory(buf2, buf_seq_size);
+			  res0 = std::make_unique<resources>(server_id, (char*)buffer0, (char*)buffer0, buf_seq_size, buf_seq_size, my_id == server_id);
+			  res1 = std::make_unique<resources>(server_id, (char*)buffer1, (char*)buffer1, buf_seq_size, buf_seq_size, my_id == server_id);
+			  res2 = std::make_unique<resources>(server_id, (char*)buffer2, (char*)buffer2, buf_seq_size, buf_seq_size, my_id == server_id);
+
 }
 
 template <typename SSTType>

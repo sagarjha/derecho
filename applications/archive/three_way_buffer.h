@@ -8,7 +8,6 @@
 
 using namespace derecho;
 using namespace sst;
-
 // TODO: Use a new type which wraps a header that includes the seq_num of the buffer
 
 struct BufferWithSeq {
@@ -42,9 +41,9 @@ template <typename SSTType>
 class ThreeWayBufferForWorker {
     uint32_t my_id, server_id;
     size_t buf_size, buf_seq_size;
-    char* buffer0;
-    char* buffer1;
-    char* buffer2;
+    volatile char* buffer0;
+    volatile char* buffer1;
+    volatile char* buffer2;
     std::unique_ptr<resources> res0, res1, res2;
     std::shared_ptr<SSTType> sst;
 
@@ -52,6 +51,6 @@ public:
     ThreeWayBufferForWorker(uint32_t my_id, uint32_t server_id, size_t buf_size,
                             std::shared_ptr<SSTType> sst);
     const char* read() const;
+    void  initBuffer(char *buf0, char* buf1, char *buf2);
 };
-
 #include "three_way_buffer_impl.h"

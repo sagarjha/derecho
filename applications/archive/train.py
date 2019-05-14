@@ -89,7 +89,7 @@ class Worker:
     Currently, we can use a shared memory to tell which model to use.
     """
     buf_num = self.buf_num.item()
-    assert(buf_num >= 0 buf_num < 3)
+    assert(buf_num >= 0 and buf_num < 3)
     return self.model_optimizer_pairs[buf_num]
 
 
@@ -235,7 +235,7 @@ def launchDerecho(name, num_nodes, num_params, itemsize, model_sem, grad_sem, mo
     grad_shm])
 
   bufs = []
-  buf_names = [model_shm * 3]
+  buf_names = [model_shm] * 3
 
   for idx, n in enumerate(buf_names):
     buf_names[idx] = n + "_BUF_" + str(idx)
@@ -345,8 +345,8 @@ def main():
   model2 = nn.Linear(784, 10, bias=False)
 
   num_params = reduce(lambda a, x: a + x,
-      map(lambda x: x.numel(), model.parameters()))
-  itemsize = model.parameters().__next__().element_size()
+      map(lambda x: x.numel(), model0.parameters()))
+  itemsize = model0.parameters().__next__().element_size()
 
   # prepare for training
   mapfile, rowlen, bufs = launchDerecho(args.derecho_name,
@@ -359,13 +359,13 @@ def main():
       args.grad_shm)
 
   # mapfile = localTestSetup()
-  moveModelParametersToSharedMemory(model0, bufs[0][0], 0)
-  moveModelParametersToSharedMemory(model1, bufs[1][0], 0)
-  moveModelParametersToSharedMemory(model2, bufs[2][0], 0)
+  moveModelParametersToSharedMemory(model0, bufs[0][0], 4)
+  moveModelParametersToSharedMemory(model1, bufs[1][0], 4)
+  moveModelParametersToSharedMemory(model2, bufs[2][0], 4)
 
   moveGradientsToSharedMemory(model0, mapfile, rowlen)
   shareModelGradients(model0, [model1, model2])
-  buf_num = createTensorInSharedMemory((1,), np.uint32, mapfile, rowlen*2-4)
+  buf_num = createTensorInSharedMemory((1,), np.int32, mapfile, rowlen*2-4)
 
   model_sem.release()
 

@@ -96,6 +96,9 @@ def main():
   unlink(posix_ipc.unlink_semaphore, MODEL_SEM_NAME)
   unlink(posix_ipc.unlink_semaphore, GRAD_SEM_NAME)
   unlink(posix_ipc.unlink_shared_memory, MODEL_SHM_NAME)
+  unlink(posix_ipc.unlink_shared_memory, MODEL_SHM_NAME+"_BUF_0")
+  unlink(posix_ipc.unlink_shared_memory, MODEL_SHM_NAME+"_BUF_2")
+  unlink(posix_ipc.unlink_shared_memory, MODEL_SHM_NAME+"_BUF_1")
   unlink(posix_ipc.unlink_shared_memory, GRAD_SHM_NAME)
   if args.server:
     #run derecho

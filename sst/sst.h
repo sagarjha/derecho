@@ -34,11 +34,6 @@ using sst::resources;
 
 namespace sst {
 
-static char* MSHM;
-static char* MSHM_BUF_0;
-static char* MSHM_BUF_1;
-static char* MSHM_BUF_2;
-
 const int alignTo = sizeof(long);
 
 constexpr int padded_len(const int& len) {
@@ -183,6 +178,7 @@ private:
     }
 
     char* sharedRows(size_t len) {
+		extern char *MSHM;
         return create_shared_memory(MSHM, len);
     }
 

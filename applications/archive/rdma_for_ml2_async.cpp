@@ -29,6 +29,10 @@ using namespace derecho;
 using namespace sst;
 using namespace std;
 
+namespace sst {
+	char *MSHM;
+}
+
 class MLSST : public SST<MLSST> {
 public:
     MLSST(const std::vector<uint32_t>& members, uint32_t my_id, uint32_t dimension)
@@ -75,11 +79,11 @@ int main(int argc, char* argv[]) {
     // const uint32_t itemsize = std::stoi(argv[3]);
     const char* MSEM = argv[4];
     const char* GSEM = argv[5];
-	MSHM = argv[6];
-	std::string msem(MSEM);
-	MSHM_BUF_0 = (char*)(msem + "_BUF_0").c_str();
-	MSHM_BUF_1 = (char*)(msem + "_BUF_1").c_str();
-	MSHM_BUF_2 = (char*)(msem + "_BUF_2").c_str();
+    sst::MSHM = argv[6];
+    std::string msem(argv[6]);
+    std::string buf0 = msem + "_BUF_0";
+    std::string buf1 = msem + "_BUF_1";
+    std::string buf2 = msem + "_BUF_2";
     // const char* GSHM = argv[7];
 
     //std::cout << sst::MSHM << std::endl;
@@ -143,7 +147,7 @@ int main(int argc, char* argv[]) {
             std::function<bool(const MLSST&)> worker_gradient_updated = [row, last_round = (uint64_t)0](const MLSST& sst) mutable {
                 if(sst.round[row] > last_round) {
                     last_round = sst.round[row];
-                    std::cerr << "Detected worker" << row << "'s gradient updated" << endl;
+    //                std::cerr << "Detected worker" << row << "'s gradient updated" << endl;
                     return true;
                 }
                 return false;
@@ -158,7 +162,7 @@ int main(int argc, char* argv[]) {
                 // push the model
                 twbs->write();
                 //sst.put_with_completion((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[0][0]) * sst.ml_models.size());
-                std::cerr << "pushed models to clients" << endl;
+     //           std::cerr << "pushed models to clients" << endl;
             };
 
             sst.predicates.insert(worker_gradient_updated, update_parameter, PredicateType::RECURRENT);
@@ -169,6 +173,7 @@ int main(int argc, char* argv[]) {
 		 */
         // wait until python objects are moved to shared memory region.
         twbw = std::make_unique<ThreeWayBufferForWorker<MLSST>>(my_id, server_id, buffer_size, sst_p);
+		twbw->initBuffer((char *)buf0.c_str(), (char *)buf1.c_str(), (char *)buf2.c_str());
         sem_wait(model_sem);
         sem_post(model_sem);
         std::cerr << "I'm a worker" << endl;
@@ -181,7 +186,7 @@ int main(int argc, char* argv[]) {
             //std::cerr << "updating new parameter " << endl;
 
             //TODO: copy from TWB to the server row
-            const char* src = twbw->read();
+            twbw->read();
             // char* tar = (char*)std::addressof(sst.ml_models[server_rank][0]);
             // memcpy(tar, src, sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
 
