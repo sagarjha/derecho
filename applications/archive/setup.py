@@ -83,7 +83,6 @@ def read_derecho_cfg(config_fn="derecho.cfg"):
 def main():
 
   args = parseArgs()
-  print(args.server)
   my_rank, model_sem, grad_sem, model_shm = read_derecho_cfg()
   MY_RANK = my_rank
   MODEL_SEM_NAME = model_sem
