@@ -58,6 +58,8 @@ void ThreeWayBufferForServer<SSTType>::write() {
             seq_nums[read_num] = UINT_MAX;
         }
         int buffer_id = std::min_element(seq_nums, seq_nums + 3) - seq_nums;
+        // std::cout << "Server writing to worker " << worker_index << ", nseq "
+        //           << nseq << ", buffer_id " << buffer_id << std::endl;
         std::unique_ptr<resources>* buf = NULL;
         if(buffer_id == 0) {
             buf = &res_vec0[worker_index];
@@ -75,9 +77,10 @@ void ThreeWayBufferForServer<SSTType>::write() {
 }
 
 template <typename SSTType>
-ThreeWayBufferForWorker<SSTType>::ThreeWayBufferForWorker(uint32_t my_id, uint32_t server_id, size_t buf_size,
+ThreeWayBufferForWorker<SSTType>::ThreeWayBufferForWorker(uint32_t my_id, uint32_t my_rank, uint32_t server_id, size_t buf_size,
                                                           std::shared_ptr<SSTType> sst)
         : my_id(my_id),
+	  my_rank(my_rank),
           server_id(server_id),
           buf_size(buf_size),
           buf_seq_size(sizeof(uint32_t) + buf_size),
@@ -101,9 +104,10 @@ const char* ThreeWayBufferForWorker<SSTType>::read() const {
             ((volatile BufferWithSeq*)(buffer1))->seq,
             ((volatile BufferWithSeq*)(buffer2))->seq};
     int buffer_id = std::max_element(seq_nums, seq_nums + 3) - seq_nums;
-    sst->read_num[my_id] = buffer_id;
+    sst->read_num[my_rank] = buffer_id;
     sst->put_with_completion((char*)std::addressof(sst->read_num[0]) - sst->getBaseAddress(), sizeof(sst->read_num[0]));
     const char* buf = NULL;
+    // std::cout << "Worker reading buffer_id " << buffer_id << ", seq_num " << *std::max_element(seq_nums, seq_nums + 3) << std::endl;
     if(buffer_id == 0) {
         buf = (const char*)(((volatile BufferWithSeq*)(buffer0))->buf);
     } else if(buffer_id == 1) {

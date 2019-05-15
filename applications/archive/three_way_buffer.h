@@ -39,7 +39,7 @@ public:
 
 template <typename SSTType>
 class ThreeWayBufferForWorker {
-    uint32_t my_id, server_id;
+    uint32_t my_id, my_rank, server_id;
     size_t buf_size, buf_seq_size;
     volatile char* buffer0;
     volatile char* buffer1;
@@ -48,7 +48,7 @@ class ThreeWayBufferForWorker {
     std::shared_ptr<SSTType> sst;
 
 public:
-    ThreeWayBufferForWorker(uint32_t my_id, uint32_t server_id, size_t buf_size,
+    ThreeWayBufferForWorker(uint32_t my_id, uint32_t my_rank, uint32_t server_id, size_t buf_size,
                             std::shared_ptr<SSTType> sst);
     const char* read() const;
     void  initBuffer(char *buf0, char* buf1, char *buf2);

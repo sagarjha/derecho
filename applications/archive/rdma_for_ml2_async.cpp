@@ -137,17 +137,17 @@ int main(int argc, char* argv[]) {
 
     if(my_rank == server_rank) {
         twbs = std::make_unique<ThreeWayBufferForServer<MLSST>>(my_id, members, buffer_size, sst_p);
-        std::cout << "I'm a server" << std::endl;
+        // std::cout << "I'm a server" << std::endl;
         for(uint row = 0; row < num_nodes; ++row) {
             if(row == my_rank) {
                 continue;
             }
 
-            std::cout << "row" << row << std::endl;
+            // std::cout << "row" << row << std::endl;
             std::function<bool(const MLSST&)> worker_gradient_updated = [row, last_round = (uint64_t)0](const MLSST& sst) mutable {
                 if(sst.round[row] > last_round) {
                     last_round = sst.round[row];
-    //                std::cerr << "Detected worker" << row << "'s gradient updated" << endl;
+		    // std::cerr << "Detected worker " << row << "'s gradient updated" << endl;
                     return true;
                 }
                 return false;
@@ -172,11 +172,11 @@ int main(int argc, char* argv[]) {
 		 * worker
 		 */
         // wait until python objects are moved to shared memory region.
-        twbw = std::make_unique<ThreeWayBufferForWorker<MLSST>>(my_id, server_id, buffer_size, sst_p);
+        twbw = std::make_unique<ThreeWayBufferForWorker<MLSST>>(my_id, my_rank, server_id, buffer_size, sst_p);
 		twbw->initBuffer((char *)buf0.c_str(), (char *)buf1.c_str(), (char *)buf2.c_str());
         sem_wait(model_sem);
         sem_post(model_sem);
-        std::cerr << "I'm a worker" << endl;
+        // std::cerr << "I'm a worker" << endl;
 
         std::function<bool(const MLSST&)> server_done = [](const MLSST& sst) {
             return true;

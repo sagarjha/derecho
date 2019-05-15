@@ -346,13 +346,15 @@ def main():
       args.grad_shm)
 
   # mapfile = localTestSetup()
+  # Offset is 4 because the sequence number is uin32_t in the C++ code without any padding
   moveModelParametersToSharedMemory(model0, bufs[0][0], 4)
   moveModelParametersToSharedMemory(model1, bufs[1][0], 4)
   moveModelParametersToSharedMemory(model2, bufs[2][0], 4)
 
   moveGradientsToSharedMemory(model0, mapfile, rowlen)
   shareModelGradients(model0, [model1, model2])
-  buf_num = createTensorInSharedMemory((1,), np.int32, mapfile, rowlen*2-4)
+  # -8 instead of -4 because SST adds padding. Customize it later.
+  buf_num = createTensorInSharedMemory((1,), np.int32, mapfile, rowlen*2-8)
 
   model_sem.release()
 
