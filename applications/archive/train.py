@@ -58,7 +58,9 @@ class Worker:
     #      ])
     #    )
     data_split_size = len(train_dataset) // self.num_workers
-    local_data = torch.utils.data.random_split(train_dataset, [data_split_size for i in range(self.num_workers)])
+    split_sizes = [data_split_size for i in range(self.num_workers)]
+    split_sizes[-1] += (len(train_dataset) % self.num_workers)
+    local_data = torch.utils.data.random_split(train_dataset, split_sizes)
 
     return torch.utils.data.DataLoader(
         dataset=local_data[self.rank-1],
