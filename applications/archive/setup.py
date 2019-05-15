@@ -28,12 +28,16 @@ def parseArgs():
   parser=argparse.ArgumentParser(description='RDMA for ml')
   parser.add_argument(
       '--server', 
-      type=bool, 
-      default=False)
+      action='store_true',
+      dest='server')
+  parser.add_argument(
+      '--worker', 
+      action='store_false',
+      dest='server')
   parser.add_argument(
       '--num-nodes', 
       type=str, 
-      default="2")
+      required=True)
   parser.add_argument(
       '--python-path', 
       type=str, 
@@ -79,6 +83,7 @@ def read_derecho_cfg(config_fn="derecho.cfg"):
 def main():
 
   args = parseArgs()
+  print(args.server)
   my_rank, model_sem, grad_sem, model_shm = read_derecho_cfg()
   MY_RANK = my_rank
   MODEL_SEM_NAME = model_sem

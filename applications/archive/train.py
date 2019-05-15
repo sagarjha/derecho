@@ -284,19 +284,6 @@ def localTestSetup():
   shm.close_fd()
   return mapfile
 
-#def initialize_threeway_buf(models, mapfile, rowlen):
-#  assert(len(models) == 3)
-#  offset_model = 0
-#  offset_grad = rowlen
-#  for model in models:
-#    offset_model += moveModelParametersToSharedMemory(model, mapfile, offset_model)
-#  model1, model2, model3 = models
-#  moveGradientsToSharedMemory(model1, mapfile, offset_grad)
-#  model1_p = list(model1.paramters())
-#  model2_p = list(model2.paramters())
-#  model3_p = list(model3.paramters())
-#  for i in range(len(model1_p)):
-#    model2_p[]
 
 def main():
   parser=argparse.ArgumentParser(description='RDMA for ml')
