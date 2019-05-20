@@ -122,8 +122,6 @@ int main(int argc, char* argv[]) {
     // initialization
     sst.round[my_rank] = 0;
     sst.read_num[my_rank] = 0;
-    sst.put_with_completion();
-    sst.sync_with_members();
 
     uint32_t server_rank = 0;
     double alpha = 0.05;
@@ -137,6 +135,8 @@ int main(int argc, char* argv[]) {
 
     if(my_rank == server_rank) {
         twbs = std::make_unique<ThreeWayBufferForServer<MLSST>>(my_id, members, buffer_size, sst_p);
+		sst.put_with_completion();
+		sst.sync_with_members();
         // std::cout << "I'm a server" << std::endl;
         for(uint row = 0; row < num_nodes; ++row) {
             if(row == my_rank) {
@@ -174,6 +174,8 @@ int main(int argc, char* argv[]) {
         // wait until python objects are moved to shared memory region.
         twbw = std::make_unique<ThreeWayBufferForWorker<MLSST>>(my_id, my_rank, server_id, buffer_size, sst_p);
 		twbw->initBuffer((char *)buf0.c_str(), (char *)buf1.c_str(), (char *)buf2.c_str());
+		sst.put_with_completion();
+		sst.sync_with_members();
         sem_wait(model_sem);
         sem_post(model_sem);
         // std::cerr << "I'm a worker" << endl;
