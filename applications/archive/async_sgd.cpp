@@ -23,14 +23,13 @@
 #include <sys/sem.h>
 #include <sys/shm.h>
 #include <sys/types.h>
-const int PERMISSION = 0666;  //-rw-rw-rw-
 
 using namespace derecho;
 using namespace sst;
 using namespace std;
 
 namespace sst {
-	char *MSHM;
+char* MSHM;
 }
 
 class MLSST : public SST<MLSST> {
@@ -59,41 +58,38 @@ void print(const MLSST& sst) {
     cout << endl;
 }
 
-inline sem_t* sem_init(const char* name) {
-    return sem_open(name, 0);
+sem_t* init_sem(const char* sem_name) {
+    return sem_open(sem_name, 0);
 }
 
 int main(int argc, char* argv[]) {
     ios_base::sync_with_stdio(false);
     srand(getpid());
-    std::cerr << "Derecho program starting up" << std::endl;
+    std::cout << "Derecho program starting up" << std::endl;
 
-    if(argc < 8) {
-        cout << "Usage: " << argv[0] << " <num_nodes> <num_params> <itemsize> <model_sem_name> <grad_sem_name> <model_shm_name> <grad_shm_name>" << endl;
-        return -1;
+    if(argc < 7) {
+        cout << "Usage: " << argv[0]
+             << " <num_nodes> <num_params> <python_sem_name>"
+             << " <cpp_sem_name> <model_shm_name> <grad_shm_name>"
+             << endl;
+        return 1;
     }
 
     // the number of nodes for this test
     const uint32_t num_nodes = std::stoi(argv[1]);
     const uint32_t num_params = std::stoi(argv[2]);
-    // const uint32_t itemsize = std::stoi(argv[3]);
-    const char* MSEM = argv[4];
-    const char* GSEM = argv[5];
-    sst::MSHM = argv[6];
-    std::string msem(argv[6]);
+    const char* python_sem_name = argv[3];
+    const char* cpp_sem_name = argv[4];
+    sst::MSHM = argv[5];
+    std::string msem(argv[5]);
     std::string buf0 = msem + "_BUF_0";
     std::string buf1 = msem + "_BUF_1";
     std::string buf2 = msem + "_BUF_2";
-    // const char* GSHM = argv[7];
 
-    //std::cout << sst::MSHM << std::endl;
-
-    sem_t* model_sem = sem_init(MSEM);
-    sem_t* grad_sem = sem_init(GSEM);
+    sem_t* python_sem = init_sem(python_sem_name);
+    sem_t* cpp_sem = init_sem(cpp_sem_name);
 
     uint32_t my_id = getConfUInt32(CONF_DERECHO_LOCAL_ID);
-
-    //std::cout << my_id << endl;
 
     const std::map<uint32_t, std::pair<ip_addr_t, uint16_t>> ip_addrs_and_ports = initialize(num_nodes);
 
@@ -104,7 +100,7 @@ int main(int argc, char* argv[]) {
     lf_initialize(ip_addrs_and_ports, my_id);
 #endif
 
-    std::cerr << "init done!" << endl;
+    std::cout << "init done!" << endl;
 
     uint32_t server_id = ip_addrs_and_ports.begin()->first;
     std::vector<uint32_t> members;
@@ -135,19 +131,16 @@ int main(int argc, char* argv[]) {
 
     if(my_rank == server_rank) {
         twbs = std::make_unique<ThreeWayBufferForServer<MLSST>>(my_id, members, buffer_size, sst_p);
-		sst.put_with_completion();
-		sst.sync_with_members();
-        // std::cout << "I'm a server" << std::endl;
+        sst.put_with_completion();
+        sst.sync_with_members();
         for(uint row = 0; row < num_nodes; ++row) {
             if(row == my_rank) {
                 continue;
             }
 
-            // std::cout << "row" << row << std::endl;
             std::function<bool(const MLSST&)> worker_gradient_updated = [row, last_round = (uint64_t)0](const MLSST& sst) mutable {
                 if(sst.round[row] > last_round) {
                     last_round = sst.round[row];
-		    // std::cerr << "Detected worker " << row << "'s gradient updated" << endl;
                     return true;
                 }
                 return false;
@@ -156,53 +149,41 @@ int main(int argc, char* argv[]) {
             std::function<void(MLSST&)> update_parameter = [row, my_rank, alpha, &twbs](MLSST& sst) {
                 float* buf = (float*)twbs->getbuf();
                 for(uint param = 0; param < sst.ml_models.size(); ++param) {
-                    //XXX: update gradient, - gradients?
-                   buf[param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];
+                    buf[param] -= (alpha / (sst.get_num_rows() - 1)) * sst.ml_models[row][param];
                 }
                 // push the model
                 twbs->write();
-                //sst.put_with_completion((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[0][0]) * sst.ml_models.size());
-     //           std::cerr << "pushed models to clients" << endl;
             };
 
             sst.predicates.insert(worker_gradient_updated, update_parameter, PredicateType::RECURRENT);
         }
     } else {
         /**
-		 * worker
-		 */
-        // wait until python objects are moved to shared memory region.
+	 * worker
+	 */
+
         twbw = std::make_unique<ThreeWayBufferForWorker<MLSST>>(my_id, my_rank, server_id, buffer_size, sst_p);
-		twbw->initBuffer((char *)buf0.c_str(), (char *)buf1.c_str(), (char *)buf2.c_str());
-		sst.put_with_completion();
-		sst.sync_with_members();
-        sem_wait(model_sem);
-        sem_post(model_sem);
-        // std::cerr << "I'm a worker" << endl;
+        twbw->initBuffer((char*)buf0.c_str(), (char*)buf1.c_str(), (char*)buf2.c_str());
+        sst.put_with_completion();
+        sst.sync_with_members();
 
         std::function<bool(const MLSST&)> server_done = [](const MLSST& sst) {
             return true;
         };
 
-        std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank, grad_sem, &twbw](MLSST& sst) {
-            //std::cerr << "updating new parameter " << endl;
-
-            //TODO: copy from TWB to the server row
+        std::function<void(MLSST&)> compute_new_parameters = [my_rank, server_rank,
+                                                              python_sem, cpp_sem,
+                                                              &twbw](MLSST& sst) {
             twbw->read();
-            // char* tar = (char*)std::addressof(sst.ml_models[server_rank][0]);
-            // memcpy(tar, src, sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
 
-            sem_post(grad_sem);
-            //std::cerr << "Python turn" << endl;
-            sem_wait(grad_sem);
+            sem_post(cpp_sem);
+            sem_wait(python_sem);
 
             // push the gradient
-            // the reason to -sst.getBaseAddress() is that here we need an offset from base.
             sst.put((char*)std::addressof(sst.ml_models[0][0]) - sst.getBaseAddress(), sizeof(sst.ml_models[my_rank][0]) * sst.ml_models.size());
             sst.round[my_rank]++;
             // push the round number - only after the gradient has been pushed
             sst.put_with_completion((char*)std::addressof(sst.round[0]) - sst.getBaseAddress(), sizeof(sst.round[my_rank]));
-            //std::cerr << "pushed gradients to server" << endl;
         };
 
         sst.predicates.insert(server_done, compute_new_parameters, PredicateType::RECURRENT);

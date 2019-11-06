@@ -2,8 +2,6 @@
 
 #include <vector>
 
-#include "derecho/derecho.h"
-
 #include "sst/lf.h"
 
 using namespace derecho;

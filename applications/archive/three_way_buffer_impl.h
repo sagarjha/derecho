@@ -1,8 +1,11 @@
 #pragma once
 
 #include "three_way_buffer.h"
+
 #include <algorithm>
 #include <iostream>
+
+#include "sst/sst.h"
 
 using namespace derecho;
 using namespace sst;
